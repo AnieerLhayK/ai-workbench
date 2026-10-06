@@ -8,6 +8,7 @@
 | Browser frontend tools | No current native Qt role | Browser test checks are not applicable |
 | Desktop Commander MCP | Optional read-only connectivity evidence | Explicit device/account/service scope required; no credential reset |
 | Hermes integrations | Configured local gateway lifecycle | Explicit profile/process and external data scope required |
+| Windows Terminal and agent CLIs | New/resume sessions in a selected project | Approved local dispatch only; CLI permissions remain authoritative; no task prompt or credential access |
 
 The workbench adds **no MCP server** or credentials. Tool availability is not write
 permission. Prefer the smallest tool sufficient for evidence; record failures

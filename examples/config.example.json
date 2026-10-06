@@ -5,5 +5,9 @@
   "node": "<absolute node.exe>",
   "hermes_home": "<absolute existing Hermes profile directory>",
   "hermes_pythonw": "<absolute existing Hermes environment pythonw.exe>",
-  "hermes_exe": "<absolute existing Hermes entry point>"
+  "hermes_exe": "<absolute existing Hermes entry point>",
+  "terminal": "<optional absolute Windows Terminal wt.exe>",
+  "powershell": "<optional absolute PowerShell executable>",
+  "codex_cli": "<optional absolute existing codex.cmd or executable>",
+  "claude_cli": "<optional absolute existing claude.cmd or executable>"
 }

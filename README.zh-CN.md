@@ -1,8 +1,8 @@
 # ai-workbench
 
 主要帮助个人工作的辅助工具与成果集合。能力有限，不保证其他机器上的普适可用性。
-0.2 版提供 **muti-ai** 原生 Qt 窗口：两个独立的 Commander/Hermes 真实控制开关，
-以及显式开启的模拟演示。Workspace 保持源码权威。
+0.3 版提供 **muti-ai** 原生 Qt 窗口：独立的 Commander/Hermes 控制开关、
+Codex 与 Claude Code 项目终端入口，以及显式模拟演示。Workspace 保持源码权威。
 
 本公开仓库使用独立投影历史。自有内容采用 [MIT](LICENSE)，依赖保留各自许可。
 Issues 开放反馈，不承诺通用支持；外部 PR 先迁回 Workspace 审阅，再由登记发布器
@@ -17,19 +17,33 @@ Issues 开放反馈，不承诺通用支持；外部 PR 先迁回 Workspace 审�
 
 本机桌面入口为 **muti-ai**。同一可滚动窗口依次显示 ChatGPT、Claude、Codex、
 Hermes、OpenCode 折叠分类。展开 ChatGPT 查看 Remote Desktop Commander，
-展开 Hermes 查看 Hermes Bot；空分类显示“暂无启动器”。允许同时展开多个分类。
+展开 Hermes 查看 Hermes Bot，展开 Claude／Codex 查看终端操作；OpenCode 显示
+“暂无启动器”。允许同时展开多个分类。
 首次展开 ChatGPT、Hermes，之后记住上次选择；收起的标题继续显示状态和错误提示。
 分类标题支持 Tab 聚焦和 Enter、Space 操作，折叠不会控制服务。打开窗口读取当前状态，
 关闭窗口保留服务及已提交的操作；重复打开唤回现有窗口。
 设置按钮选择深色或浅色模式并记住选择，不提供主题切换快捷键。
 
-每行显示已停止、启动中、运行中、停止中、失败或状态未确认。
+服务行显示已停止、启动中、运行中、停止中、失败或状态未确认。
 等待时只禁用该行开关。进程仍在但连接异常时保持开启，并显示连接提示。
 仅检测到 npx 安装进程不代表 Commander 已可用；账户授权由用户在供应方浏览器中完成。
 启动失败会显示安全的原因类别和退出码。验证码过期时使用重新开启后打开的新页面；
 未知错误不会被直接认定为授权失败，原始账户输出不会写入状态或日志。
 存在 HTTP(S) 代理环境变量时，Commander 子进程会启用现代 Node 的环境代理支持，
 保留显式 Node 代理设置；不修改全局环境或 Hermes 配置。
+
+### 项目终端
+
+在分类上方选择项目文件夹，首次使用不预选目录；最近十个目录保存在源码外。
+Claude／Codex 各提供“新建会话”和“恢复最近会话”，每次明确点击在所选项目目录
+打开一个 Windows Terminal 新窗口。派发期间禁用该工具的两个按钮，另一工具仍可操作。
+目录已移动或失效时需重新选择。
+
+新建使用 `codex`、`claude`；恢复使用 `codex resume --last`、`claude --continue`，
+保留项目过滤。历史、登录、模型、权限及项目指令沿用 CLI 自身设置。工作台不发送任务
+或添加权限绕过参数；无历史会话时由 CLI 提示。“已打开终端”仅代表终端派发成功，
+不代表 Agent 已就绪；错误与信任、登录提示在终端内呈现。切换项目不影响已提交请求
+或已有会话；关闭 muti-ai 保留终端及正在派发的操作。本版不提供终端停止或会话列表。
 
 ## 快速开始：模拟模式
 
@@ -40,12 +54,14 @@ python -m pip install '.[dev]'
 python -B scripts/launch.py --demo
 ```
 
-模拟模式无需供应方账户，不启动真实服务。真实控制需要 Windows、已有 Node/npm
+模拟模式无需供应方账户，不打开真实终端或服务。真实控制需要 Windows、已有 Node/npm
 与 Hermes 环境；Commander 按需通过 npx 下载 `@latest`，工作台不安装 Hermes。
 
 把[占位配置示例](examples/config.example.json)复制到克隆目录外，将每项替换为本机
 绝对路径。数据与凭据均留在外部目录。`pythonw` 必须能使用 PySide6；Hermes 路径
-指向其已有运行环境与 profile。在本目录运行：
+指向其已有运行环境与 profile。可选的 `terminal`、`powershell`、`codex_cli`、
+`claude_cli` 指向已有 Windows Terminal、PowerShell 与 CLI 可执行文件或 `.cmd`。
+不用的可选字段可省略；缺失只影响对应终端操作，旧版服务配置仍有效。在本目录运行：
 
 ```powershell
 ./scripts/Start-Workbench.ps1 -Config <external-config.json> -PythonExe python
@@ -99,5 +115,6 @@ Windows CI 使用 Python 3.13、PySide6 6.9.2 和 Qt offscreen 执行边界检�
 
 已有预览通过检查且清单相同时，可用 `export --refresh` 更新。导出目录独立运行
 显式模拟模式和测试。分类在可移植 Catalog Module 中登记，不在运行时发现宿主平台。
-新增启动器、安装包与 Pi 接入留待后续。当前没有 Pi 应用；实际加入后，会在对应应用
+OpenCode Web、安装包与 Pi 接入留待后续，Claude Remote Control 不在本版范围。
+当前没有 Pi 应用；实际加入后，会在对应应用
 文档与本 README 注明上游仓库、用途和适用依赖许可。

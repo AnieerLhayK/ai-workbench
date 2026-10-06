@@ -1,8 +1,9 @@
 # ai-workbench
 
 Personal helper tools and results. Capabilities are limited and usefulness on
-other machines is not guaranteed. Version 0.2 provides **muti-ai**, a native Qt
-window with independent real Commander/Hermes controls and an explicit demo.
+other machines is not guaranteed. Version 0.3 provides **muti-ai**, a native Qt
+window with independent Commander/Hermes controls, project terminal launchers
+for Codex and Claude Code, and an explicit demo.
 Workspace remains the authoritative source.
 
 This public repository uses independent projection history. Own content is
@@ -20,7 +21,8 @@ and offers a starting point for your own agent-assisted workspace.
 
 The configured desktop entry is **muti-ai**. One scrollable window groups tools
 under ChatGPT, Claude, Codex, Hermes and OpenCode, in that order. Expand ChatGPT
-for Remote Desktop Commander, or Hermes for Hermes Bot. Empty categories show
+for Remote Desktop Commander, Hermes for Hermes Bot, or Claude/Codex for their
+terminal actions. OpenCode shows
 “暂无启动器” (no launcher). Several categories can stay open together.
 ChatGPT and Hermes start expanded; later openings restore the last selection.
 Collapsed headers still show live status and flag errors. Category headers
@@ -29,7 +31,7 @@ Opening reads current state; closing preserves services and pending operations.
 Repeated opening brings back the existing window. The settings button selects
 light or dark mode and remembers it; there is no theme keyboard shortcut.
 
-Each row shows stopped, starting, running, stopping, failure, or an unconfirmed
+Each service row shows stopped, starting, running, stopping, failure, or an unconfirmed
 state. Pending requests disable only that row. Connection failure does not turn
 off a live process. A live installer is not a ready Commander device.
 Account authorization stays in the provider's browser flow.
@@ -39,6 +41,24 @@ as an authorization failure. No raw account output is stored.
 Commander enables modern Node's environment-proxy support for its own child
 when HTTP(S) proxy variables already exist; an explicit Node proxy setting is
 preserved. Global environment and Hermes configuration are unchanged.
+
+### Project terminals
+
+Choose a folder above the categories; no project is selected on first use.
+The shared selector remembers up to ten recent directories outside source.
+Each Claude/Codex row offers **新建会话** (new) and **恢复最近会话** (resume latest).
+Each deliberate click opens a new Windows Terminal window in the selected
+project. Both buttons for that tool are disabled while dispatching; the other
+tool remains available. Missing or moved directories require a new selection.
+
+New commands are `codex` and `claude`; resume uses `codex resume --last` and
+`claude --continue`, with project filtering retained. CLI history, login, model,
+permissions and project instructions stay with each tool. The workbench sends
+no task prompt and adds no permission bypass. A missing history is shown by the CLI.
+“已打开终端” means successful terminal handoff, not agent readiness. CLI errors
+and trust/login prompts remain visible in the terminal. Changing the selector
+does not change submitted requests or existing sessions. Closing muti-ai leaves
+terminals and dispatches intact. There is no terminal stop button or session list.
 
 ## Quick start: demo
 
@@ -50,14 +70,18 @@ python -m pip install '.[dev]'
 python -B scripts/launch.py --demo
 ```
 
-Demo requires no provider accounts and starts no real services. Real controls
+Demo requires no provider accounts and opens no real terminals or services. Real controls
 require Windows, existing Node/npm and Hermes environments. Commander downloads
 `@latest` through npx as needed; the workbench does not install Hermes.
 
 Copy [the placeholder config](examples/config.example.json) outside the clone,
 replace all placeholders with absolute local paths, and keep data and credentials
 external. `pythonw` must have PySide6 available; Hermes paths identify its existing
-runtime/profile. From this package directory:
+runtime/profile. Optional `terminal`, `powershell`, `codex_cli` and `claude_cli`
+fields identify existing Windows Terminal, PowerShell and CLI executables or
+`.cmd` launchers. Omit unused optional fields; missing fields affect only the
+corresponding terminal action. Old service-only configurations remain valid.
+From this package directory:
 
 ```powershell
 ./scripts/Start-Workbench.ps1 -Config <external-config.json> -PythonExe python
@@ -117,7 +141,8 @@ and simulated tests. It has no provider credentials and starts no real services.
 
 An existing verified preview with identical inventory supports `export --refresh`.
 Run its explicit demo and tests independently. Category registration lives in
-the portable Catalog Module, without runtime host-platform discovery. New launchers,
-installable releases and Pi integration remain future work. When Pi applications
+the portable Catalog Module, without runtime host-platform discovery. OpenCode Web,
+installable releases and Pi integration remain future work. Claude Remote Control
+is not included. When Pi applications
 are actually added, their docs and this README must credit the upstream repository,
 explain the use and identify dependency licenses. No Pi application is included yet.

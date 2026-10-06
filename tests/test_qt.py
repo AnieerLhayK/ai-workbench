@@ -27,6 +27,7 @@ def test_initially_expanded_independent_switches_wait_failure_retry(qt_app):
         assert second.toggle.isEnabled()
         QTest.mouseClick(first.toggle, Qt.MouseButton.LeftButton)
         assert len(adapters["commander"].requests) == 1
+        window.scroll.ensureWidgetVisible(second.toggle)
         QTest.mouseClick(second.toggle, Qt.MouseButton.LeftButton)
         adapters["hermes"].complete()
         assert second.toggle.isChecked()
@@ -147,8 +148,12 @@ def test_categories_empty_multiple_expansion_and_keyboard_no_requests(qt_app):
             window.scroll.ensureWidgetVisible(group.header)
             QTest.mouseClick(group.header, Qt.MouseButton.LeftButton)
             assert group.body.isVisible()
-            assert group.empty.text() == "暂无启动器"
-            assert group.row is None
+            if key == "opencode":
+                assert group.empty.text() == "暂无启动器"
+                assert not group.rows
+            else:
+                assert len(group.rows) == 1
+                assert len(group.rows[0].buttons) == 2
         header = window.groups["chatgpt"].header
         window.scroll.ensureWidgetVisible(header)
         header.setFocus()

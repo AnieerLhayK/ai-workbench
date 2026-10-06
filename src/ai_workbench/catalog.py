@@ -6,23 +6,26 @@ from dataclasses import dataclass
 class Launcher:
     id: str
     title: str
+    kind: str = "service"
 
 
 @dataclass(frozen=True)
 class Category:
     id: str
     title: str
-    launcher: Launcher | None = None
+    launchers: tuple[Launcher, ...] = ()
 
 
 CATEGORIES = (
-    Category("chatgpt", "ChatGPT", Launcher("commander", "Remote Desktop Commander")),
-    Category("claude", "Claude"),
-    Category("codex", "Codex"),
-    Category("hermes", "Hermes", Launcher("hermes", "Hermes Bot")),
+    Category("chatgpt", "ChatGPT", (Launcher("commander", "Remote Desktop Commander"),)),
+    Category("claude", "Claude", (Launcher("claude", "Claude Code", "terminal"),)),
+    Category("codex", "Codex", (Launcher("codex", "Codex CLI", "terminal"),)),
+    Category("hermes", "Hermes", (Launcher("hermes", "Hermes Bot"),)),
     Category("opencode", "OpenCode"),
 )
-LAUNCHERS = tuple(category.launcher for category in CATEGORIES if category.launcher)
+LAUNCHERS = tuple(launcher for category in CATEGORIES for launcher in category.launchers)
+SERVICE_LAUNCHERS = tuple(launcher for launcher in LAUNCHERS if launcher.kind == "service")
+TERMINAL_LAUNCHERS = tuple(launcher for launcher in LAUNCHERS if launcher.kind == "terminal")
 DEFAULT_EXPANDED = ("chatgpt", "hermes")
 
 

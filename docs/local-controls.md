@@ -4,6 +4,8 @@ The window observes one Controller per tool. Each local Adapter communicates
 with a detached, process-locked worker through atomic JSON in the configured
 external data directory. Opening a window starts observers, not services.
 Closing it leaves workers, service processes and pending requests intact.
+Project terminal actions have a separate [dispatch contract](project-terminals.md)
+and never enter the service process discovery or stop paths.
 
 ## Configuration and deployment
 

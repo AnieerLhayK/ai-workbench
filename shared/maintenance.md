@@ -22,8 +22,10 @@ window review for GUI changes, and portable preview verification for export
 changes. QtTest exercises native controls; browser testing is not applicable.
 Always distinguish simulated evidence from actual service readiness. The native
 window groups tools using the portable read-only Catalog Module. ChatGPT owns
-Commander, Hermes owns Hermes Bot; Claude, Codex and OpenCode have no launcher.
-Collapse only hides presentation: keep one Controller per launcher and continue
+Commander, Hermes owns Hermes Bot; Claude and Codex provide project terminal
+actions, and OpenCode has no launcher. Catalog holds launcher collections with
+explicit service/terminal kinds. Collapse only hides presentation: keep one
+Controller per service launcher and continue
 observing hidden rows and header summaries. Theme and expansion settings persist externally and must
 not issue service commands; do not add a theme keyboard shortcut.
 
@@ -32,6 +34,15 @@ fields. Distinguish an absent/malformed expansion list (default ChatGPT/Hermes)
 from an empty list (all collapsed); ignore unknown IDs. Keep this regression
 coverage when adding preferences. Package registration must not read private
 host platform manifests at runtime or from an independent preview.
+
+For terminal changes load [project terminals](../docs/project-terminals.md).
+The TerminalLauncher Module owns dispatch state behind launch/observe; Windows,
+demo and controlled Adapters share its Seam. Terminal dispatch is independent
+of service lifecycle: do not report Agent readiness or invent a stop control.
+Snapshot the selected directory per request, use literal paths and fixed CLI
+arguments, and merge selected/recent project preferences externally. Detached
+terminal brokers survive window closure. A successful broker exit verifies
+handoff only; CLI errors and permissions remain visible in the terminal.
 
 Read [local controls](../docs/local-controls.md) for detached workers, process
 identity, timeouts, connection semantics and local deployment. Observed process

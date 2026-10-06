@@ -6,11 +6,12 @@ from pathlib import Path
 from PySide6.QtCore import QLibraryInfo, QRectF, Qt, QTimer
 from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPen
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
-from PySide6.QtWidgets import QAbstractButton, QApplication, QHBoxLayout, QLabel, QMainWindow, QMenu, QMessageBox, QPushButton, QScrollArea, QSizePolicy, QToolButton, QVBoxLayout, QWidget
-from .catalog import CATEGORIES, LAUNCHERS, expanded_categories
+from PySide6.QtWidgets import QAbstractButton, QApplication, QComboBox, QFileDialog, QHBoxLayout, QLabel, QMainWindow, QMenu, QMessageBox, QPushButton, QScrollArea, QSizePolicy, QToolButton, QVBoxLayout, QWidget
+from .catalog import CATEGORIES, SERVICE_LAUNCHERS, TERMINAL_LAUNCHERS, expanded_categories
 from .demo import DemoAdapter
 from .lifecycle import Controller, Phase, State
 from .storage import ProcessLock, atomic_json, load_config, read_json
+from .terminal import DemoTerminalAdapter, TerminalLauncher, WindowsTerminalAdapter, project_path, recent_projects, remember_project
 
 ASSETS = Path(__file__).resolve().parent / "assets"
 STATUS = {Phase.CHECKING: "正在检查…", Phase.UNKNOWN: "状态未确认", Phase.STOPPED: "已停止", Phase.STARTING: "启动中…", Phase.RUNNING: "运行中", Phase.STOPPING: "停止中…", Phase.FAILED: "操作失败"}
@@ -139,11 +140,67 @@ class CategoryHeader(QPushButton):
             super().keyPressEvent(event)
 
 
+class TerminalRow(QWidget):
+    def __init__(self, launcher, controller):
+        super().__init__()
+        self.launcher, self.controller = launcher, controller
+        self.project = ""
+        self.colors = PALETTES["dark"]
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 14, 0, 14)
+        self.heading = QLabel(launcher.title)
+        self.heading.setObjectName("toolHeading")
+        layout.addWidget(self.heading)
+        line = QHBoxLayout()
+        self.mark, self.status = StatusMark(), QLabel()
+        self.status.setObjectName("status")
+        self.status.setWordWrap(True)
+        line.addWidget(self.mark)
+        line.addWidget(self.status, 1)
+        layout.addLayout(line)
+        self.error = QLabel()
+        self.error.setObjectName("error")
+        self.error.setWordWrap(True)
+        layout.addWidget(self.error)
+        buttons = QHBoxLayout()
+        self.buttons = {}
+        for mode, title in (("new", "新建会话"), ("resume", "恢复最近会话")):
+            button = QPushButton(title)
+            button.setObjectName("launchButton")
+            button.setAccessibleName(launcher.title + " " + title)
+            button.clicked.connect(lambda checked=False, selected=mode: controller.launch(launcher.id, self.project, selected))
+            self.buttons[mode] = button
+            buttons.addWidget(button)
+        buttons.addStretch()
+        layout.addLayout(buttons)
+        self.unsubscribe = controller.observe(self.render)
+
+    def set_project(self, project):
+        self.project = project
+        self.render(self.controller.state)
+
+    def render(self, state):
+        try:
+            project_path(self.project)
+            valid = True
+        except ValueError:
+            valid = False
+        for button in self.buttons.values():
+            button.setEnabled(valid and not state.pending)
+        text = "正在打开终端…" if state.pending else "已打开终端" if state.dispatched else "派发失败" if state.error else "请选择有效的项目目录" if not valid else "就绪 · 终端内确认会话状态"
+        if state.project:
+            text += "\n" + state.project
+        self.status.setText(text)
+        self.error.setText(state.error or "")
+        self.error.setVisible(bool(state.error))
+        self.mark.set_indicator(state.pending, self.colors["accent"] if state.pending or state.dispatched else self.colors["muted"])
+
+
 class CategoryGroup(QWidget):
     """Collapse presentation only; state observation remains active when hidden."""
-    def __init__(self, category, row, expanded):
+    def __init__(self, category, rows, expanded):
         super().__init__()
-        self.category, self.row = category, row
+        self.category, self.rows = category, rows
         self.colors = PALETTES["dark"]
         self.setObjectName("categoryGroup")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground)
@@ -178,8 +235,9 @@ class CategoryGroup(QWidget):
         self.body = QWidget()
         body_layout = QVBoxLayout(self.body)
         body_layout.setContentsMargins(24, 0, 14, 8)
-        if row:
-            body_layout.addWidget(row)
+        if rows:
+            for row in rows:
+                body_layout.addWidget(row)
         else:
             self.empty = QLabel("暂无启动器")
             self.empty.setObjectName("emptyCategory")
@@ -189,8 +247,8 @@ class CategoryGroup(QWidget):
         self.header.toggled.connect(self.set_expanded)
         self.header.setChecked(expanded)
         self.set_expanded(expanded)
-        if row:
-            self.unsubscribe = row.controller.observe(self.render)
+        if rows:
+            self.unsubscribes = [row.controller.observe(lambda state: self.render()) for row in rows]
         else:
             self.mark.hide()
 
@@ -199,12 +257,18 @@ class CategoryGroup(QWidget):
         self.arrow.setText("▾" if expanded else "▸")
         self.header.setAccessibleDescription("已展开" if expanded else "已收起")
 
-    def render(self, state):
-        detail = state.detail or STATUS[state.phase]
-        self.summary.setText(detail + (" · 有错误" if state.error else ""))
-        self.header.setToolTip(state.error or detail)
-        pending = state.pending or state.phase == Phase.CHECKING
-        color = self.colors["error"] if state.error else self.colors["accent"] if state.running or pending else self.colors["muted"]
+    def render(self):
+        states = [row.controller.state for row in self.rows]
+        errors = [state.error for state in states if state.error]
+        pending = any(state.pending or isinstance(state, State) and state.phase == Phase.CHECKING for state in states)
+        running = any(isinstance(state, State) and state.running for state in states)
+        if len(states) == 1 and isinstance(states[0], State):
+            detail = states[0].detail or STATUS[states[0].phase]
+        else:
+            detail = "正在打开终端…" if pending else f"{sum(len(row.buttons) if isinstance(row, TerminalRow) else 1 for row in self.rows)} 个启动操作"
+        self.summary.setText(detail + (" · 有错误" if errors else ""))
+        self.header.setToolTip("\n".join(errors) if errors else detail)
+        color = self.colors["error"] if errors else self.colors["accent"] if running or pending else self.colors["muted"]
         self.mark.set_indicator(pending, color)
 
 
@@ -236,7 +300,7 @@ class TitleBar(QWidget):
         w.showNormal() if w.isMaximized() else w.showMaximized()
 
 class Workbench(QMainWindow):
-    def __init__(self, controllers=None, preferences=None, demo=False):
+    def __init__(self, controllers=None, preferences=None, demo=False, terminal_launchers=None):
         super().__init__()
         self.setWindowTitle("muti-ai")
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
@@ -288,12 +352,37 @@ class Workbench(QMainWindow):
         layout = QVBoxLayout(content)
         layout.setContentsMargins(24, 12, 24, 18)
         layout.setSpacing(12)
+        self.recent_projects = recent_projects(preference_values.get("recent_projects"))
+        self.project = preference_values.get("selected_project", "")
+        if not isinstance(self.project, str): self.project = ""
+        project_line = QHBoxLayout()
+        project_line.addWidget(QLabel("项目"))
+        self.project_selector = QComboBox()
+        self.project_selector.setAccessibleName("当前项目与最近项目")
+        self.project_selector.setMinimumWidth(0)
+        self.project_selector.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.choose_project = QPushButton("选择文件夹")
+        self.choose_project.setObjectName("launchButton")
+        self.choose_project.clicked.connect(self.browse_project)
+        project_line.addWidget(self.project_selector, 1)
+        project_line.addWidget(self.choose_project)
+        layout.addLayout(project_line)
+        self.project_hint = QLabel()
+        self.project_hint.setObjectName("status")
+        self.project_hint.setWordWrap(True)
+        layout.addWidget(self.project_hint)
         self.adapters = {}
         if controllers is None:
             if not demo: raise ValueError("真实模式必须提供本机控制配置")
-            self.adapters = {launcher.id: DemoAdapter(self) for launcher in LAUNCHERS}
+            self.adapters = {launcher.id: DemoAdapter(self) for launcher in SERVICE_LAUNCHERS}
             controllers = {key: Controller(adapter) for key, adapter in self.adapters.items()}
-        self.rows = {launcher.id: ControlRow(launcher.title, controllers[launcher.id]) for launcher in LAUNCHERS}
+        self.rows = {launcher.id: ControlRow(launcher.title, controllers[launcher.id]) for launcher in SERVICE_LAUNCHERS}
+        if terminal_launchers is None:
+            terminal_launchers = {launcher.id: TerminalLauncher(DemoTerminalAdapter(self) if demo else WindowsTerminalAdapter({}, self)) for launcher in TERMINAL_LAUNCHERS}
+        self.terminal_rows = {launcher.id: TerminalRow(launcher, terminal_launchers[launcher.id]) for launcher in TERMINAL_LAUNCHERS}
+        self.refresh_projects()
+        self.project_selector.activated.connect(self.activate_project)
+        self.update_project_rows()
         self.scroll = QScrollArea()
         self.scroll.setObjectName("categoriesScroll")
         self.scroll.setWidgetResizable(True)
@@ -304,8 +393,8 @@ class Workbench(QMainWindow):
         groups_layout.setSpacing(8)
         self.groups = {}
         for category in CATEGORIES:
-            row = self.rows[category.launcher.id] if category.launcher else None
-            group = CategoryGroup(category, row, category.id in expanded)
+            rows = tuple((self.rows if launcher.kind == "service" else self.terminal_rows)[launcher.id] for launcher in category.launchers)
+            group = CategoryGroup(category, rows, category.id in expanded)
             group.header.toggled.connect(self.save_expansion)
             self.groups[category.id] = group
             groups_layout.addWidget(group)
@@ -321,6 +410,39 @@ class Workbench(QMainWindow):
         for child in root.findChildren(QWidget):
             child.installEventFilter(self)
         self.set_theme(self.theme, persist=False)
+
+    def refresh_projects(self):
+        self.project_selector.clear()
+        self.project_selector.addItem("请选择项目目录", "")
+        values = recent_projects(([self.project] if self.project else []) + self.recent_projects)
+        for value in values:
+            self.project_selector.addItem(value, value)
+        self.project_selector.setCurrentIndex(max(0, self.project_selector.findData(self.project)))
+        self.project_selector.setToolTip(self.project)
+
+    def browse_project(self):
+        selected = QFileDialog.getExistingDirectory(self, "选择项目目录", self.project if Path(self.project).is_dir() else "")
+        if selected: self.select_project(selected)
+
+    def activate_project(self, index):
+        self.select_project(self.project_selector.itemData(index))
+
+    def select_project(self, value):
+        self.project = value
+        if value:
+            self.recent_projects = remember_project(value, self.recent_projects)
+        self.save_preferences(selected_project=value, recent_projects=self.recent_projects)
+        self.refresh_projects()
+        self.update_project_rows()
+
+    def update_project_rows(self):
+        for row in self.terminal_rows.values(): row.set_project(self.project)
+        try:
+            project_path(self.project)
+            hint = "终端入口使用此目录；已打开的会话保持原目录"
+        except ValueError:
+            hint = "目录不存在，请重新选择" if self.project else "先选择项目，再打开 Codex 或 Claude"
+        self.project_hint.setText(hint)
 
     def eventFilter(self, watched, event):
         from PySide6.QtCore import QEvent
@@ -348,9 +470,12 @@ class Workbench(QMainWindow):
         for row in self.rows.values():
             row.colors = row.toggle.colors = c
             row.render(row.controller.state)
+        for row in self.terminal_rows.values():
+            row.colors = c
+            row.render(row.controller.state)
         for group in self.groups.values():
             group.colors = c
-            if group.row: group.render(group.row.controller.state)
+            if group.rows: group.render()
         self.setStyleSheet(f"""
             QWidget {{ color: {c['text']}; font-family: 'Segoe UI', 'Microsoft YaHei UI'; font-size: 13px; background: {c['bg']}; }}
             QWidget#shell {{ border: 1px solid {c['line']}; }}
@@ -372,6 +497,10 @@ class Workbench(QMainWindow):
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
             QPushButton, QToolButton {{ border: none; background: transparent; border-radius: 4px; }}
             QPushButton:hover, QToolButton:hover {{ background: {c['hover']}; }}
+            QPushButton#launchButton {{ border: 1px solid {c['line']}; padding: 7px 12px; }}
+            QPushButton#launchButton:focus, QComboBox:focus {{ border: 1px solid {c['accent']}; }}
+            QPushButton:disabled {{ color: {c['muted']}; }}
+            QComboBox {{ border: 1px solid {c['line']}; padding: 7px; }}
             QToolButton::menu-indicator {{ image: none; }}
             QMenu {{ padding: 8px; border: 1px solid {c['line']}; }}
             QMenu::item {{ padding: 8px 16px; }}
@@ -439,9 +568,10 @@ def main(argv=None):
             window = Workbench(demo=True)
         else:
             from .local import LocalAdapter
-            adapters = {launcher.id: LocalAdapter(launcher.id, config, args.config) for launcher in LAUNCHERS}
+            adapters = {launcher.id: LocalAdapter(launcher.id, config, args.config) for launcher in SERVICE_LAUNCHERS}
             controllers = {key: Controller(adapter) for key, adapter in adapters.items()}
-            window = Workbench(controllers, Path(config["data_root"]) / "preferences.json")
+            terminals = {launcher.id: TerminalLauncher(WindowsTerminalAdapter(config, app)) for launcher in TERMINAL_LAUNCHERS}
+            window = Workbench(controllers, Path(config["data_root"]) / "preferences.json", terminal_launchers=terminals)
             window.adapters = adapters
         instance.attach(window)
         window.show()

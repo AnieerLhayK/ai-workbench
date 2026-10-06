@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-workbench"
-version = "0.2.0"
-description = "Personal helper workbench with local Commander and Hermes controls"
+version = "0.3.0"
+description = "Personal helper workbench with local controls and project terminal launchers"
 requires-python = ">=3.13"
 dependencies = ["PySide6==6.9.2"]
 

@@ -19,6 +19,8 @@ load [MCP guidance](../../docs/mcp.md).
 Preserve the lifecycle interface and independent tool states; accept completion
 only through the adapter seam. Real services, accounts, credentials, dependency
 installation, deletion and remote publishing require their own host authority.
+For project terminal actions load [the dispatch contract](../../docs/project-terminals.md).
+Keep dispatch observations separate from service state and model readiness.
 
 Finish with relevant tests, native review for GUI changes and independent preview
 checks for projection changes. Report simulated results and unverified real

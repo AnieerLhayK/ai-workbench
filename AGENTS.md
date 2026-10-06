@@ -13,6 +13,12 @@ Read [the maintenance contract](shared/maintenance.md) before changes. Load
 [the maintenance skill](skills/ai-workbench-maintainer/SKILL.md) when developing,
 testing or preparing a projection. It is development-only and unexposed here.
 
+For terminal actions read [project terminals](docs/project-terminals.md): dispatch
+semantics, project preferences and optional local configuration. Verify new/resume
+commands without submitting model tasks. Terminal actions use launch/observe;
+service controls use start/stop/observe. Real terminal opening requires local
+process authority, while simulated testing requires no provider account.
+
 Keep demo mode explicit. Preserve independent tool state and callback-based
 completion. Local deployment and real controls use their own approved host task;
 ordinary maintenance does not grant process, account or external authority.
