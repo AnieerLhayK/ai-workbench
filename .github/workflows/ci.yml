@@ -1,0 +1,23 @@
+name: Windows simulated checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  simulated:
+    runs-on: windows-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Check public boundary and provenance
+        run: python -B scripts/projection.py check --destination . --require-revision
+      - name: Install test dependencies
+        run: python -m pip install PySide6==6.9.2 'pytest>=8,<10'
+      - name: Run simulated tests
+        run: python -B -m pytest -q -p no:cacheprovider --basetemp "${{ runner.temp }}/ai-workbench-tests" tests

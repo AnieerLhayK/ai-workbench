@@ -1,0 +1,9 @@
+{
+  "data_root": "<absolute external data directory>",
+  "pythonw": "<absolute Python 3.13 pythonw.exe>",
+  "npx": "<absolute npx.cmd>",
+  "node": "<absolute node.exe>",
+  "hermes_home": "<absolute existing Hermes profile directory>",
+  "hermes_pythonw": "<absolute existing Hermes environment pythonw.exe>",
+  "hermes_exe": "<absolute existing Hermes entry point>"
+}

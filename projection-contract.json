@@ -1,0 +1,19 @@
+{
+  "schema_version": "2.0",
+  "purpose": "Public portable controls, explicit demo and maintenance; host configuration and credentials excluded",
+  "generated_files": ["PROJECTION_SOURCE.json"],
+  "files": [
+    ".gitignore", "pyproject.toml", "README.md", "README.zh-CN.md", "AGENTS.md", "LICENSE", "examples/config.example.json", ".github/workflows/ci.yml",
+    "projection-contract.json", "shared/maintenance.md", "docs/mcp.md",
+    "src/ai_workbench/__init__.py", "src/ai_workbench/__main__.py",
+    "src/ai_workbench/lifecycle.py", "src/ai_workbench/demo.py", "src/ai_workbench/app.py", "src/ai_workbench/catalog.py",
+    "src/ai_workbench/storage.py", "src/ai_workbench/windows.py", "src/ai_workbench/worker.py", "src/ai_workbench/local.py",
+    "src/ai_workbench/assets/muti-ai.svg", "src/ai_workbench/assets/muti-ai-light.svg",
+    "src/ai_workbench/assets/settings.svg", "src/ai_workbench/assets/settings-light.svg", "src/ai_workbench/assets/muti-ai.ico",
+    "scripts/Start-Workbench.ps1", "scripts/projection.py", "scripts/launch.py", "scripts/make_icon.py", "scripts/Install-Local.ps1", "docs/local-controls.md",
+    "tests/conftest.py", "tests/test_lifecycle.py", "tests/test_qt.py", "tests/test_projection.py", "tests/test_worker.py", "tests/test_local.py",
+    "skills/ai-workbench-maintainer/SKILL.md",
+    "skills/ai-workbench-maintainer/references/development.md",
+    "skills/ai-workbench-maintainer/references/projection.md"
+  ]
+}
