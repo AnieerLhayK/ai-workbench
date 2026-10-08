@@ -1,6 +1,8 @@
 import importlib.util
 import json
+import stat
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -8,6 +10,31 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("projection", ROOT / "scripts/projection.py")
 projection = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(projection)
+
+
+def test_export_without_python_312_junction_api(tmp_path, monkeypatch):
+    monkeypatch.delattr(Path, "is_junction", raising=False)
+    assert projection.export(ROOT, tmp_path / "preview")
+
+
+@pytest.mark.parametrize("mode, attributes, expected", [
+    (stat.S_IFDIR, 0, False),
+    (stat.S_IFLNK, 0, True),
+    (stat.S_IFDIR, stat.FILE_ATTRIBUTE_REPARSE_POINT, True),
+])
+def test_link_detection_uses_lstat_attributes(tmp_path, monkeypatch, mode, attributes, expected):
+    monkeypatch.setattr(Path, "lstat", lambda self: SimpleNamespace(
+        st_mode=mode, st_file_attributes=attributes))
+    assert projection.is_link(tmp_path) is expected
+
+
+def test_link_detection_fails_closed_on_inspection_error(tmp_path, monkeypatch):
+    def denied(self):
+        raise PermissionError("inspection denied")
+
+    monkeypatch.setattr(Path, "lstat", denied)
+    with pytest.raises(ValueError, match="Cannot inspect"):
+        projection.is_link(tmp_path)
 
 
 def test_preview_complete_portable_and_exact(tmp_path):

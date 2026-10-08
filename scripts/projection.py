@@ -5,9 +5,23 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
+import stat
 
 ROOT = Path(__file__).resolve().parents[1]
 GENERATED = ["PROJECTION_SOURCE.json"]
+
+
+def is_link(path: Path) -> bool:
+    """Reject symlinks and Windows reparse points, including on Python 3.11."""
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        raise ValueError(f"Cannot inspect projection path: {path}") from exc
+    return stat.S_ISLNK(info.st_mode) or bool(
+        getattr(info, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT
+    )
 
 
 def provenance(revision=None):
@@ -48,7 +62,7 @@ def allowed_files(root: Path) -> list[str]:
         candidate = root / name
         if not candidate.resolve().is_relative_to(root.resolve()):
             raise ValueError(f"Path escapes package: {name}")
-        if any(part.is_symlink() or part.is_junction() for part in (candidate, *candidate.parents)):
+        if any(is_link(part) for part in (candidate, *candidate.parents)):
             raise ValueError(f"Linked contract path: {name}")
         if not candidate.is_file():
             raise ValueError(f"Missing contract file: {name}")
@@ -62,7 +76,7 @@ def payload_files(root: Path) -> set[str]:
         for name in list(dirs) + files:
             path = Path(directory) / name
             relative = path.relative_to(root).as_posix()
-            if path.is_symlink() or path.is_junction():
+            if is_link(path):
                 raise ValueError(f"Linked preview path: {relative}")
             if relative == ".git":
                 if name in dirs:
@@ -107,7 +121,7 @@ def export(source: Path, destination: Path, *, refresh=False, source_revision=No
     destination = destination.absolute()
     if destination.resolve().is_relative_to(source):
         raise ValueError("Preview must be outside package source")
-    if any(part.is_symlink() or part.is_junction() for part in (destination, *destination.parents)):
+    if any(is_link(part) for part in (destination, *destination.parents)):
         raise ValueError("Preview destination must not use links or junctions")
     files = allowed_files(source)
     marker = provenance(source_revision)
