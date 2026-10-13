@@ -20,6 +20,9 @@ Preserve the lifecycle interface and independent tool states; accept completion
 only through the adapter seam. Real services, accounts, credentials, dependency
 installation, deletion and remote publishing require their own host authority.
 For project terminal actions load [the dispatch contract](../../docs/project-terminals.md).
+For Personal Experiment Box changes load [the trial contract](../../docs/experiment-box.md).
+Use native Qt validation for this independent application, including draft
+preservation and confirmation cancellation; do not start Commander as a fixture.
 Keep dispatch observations separate from service state and model readiness.
 
 Finish with relevant tests, native review for GUI changes and independent preview

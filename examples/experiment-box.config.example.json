@@ -1,0 +1,6 @@
+{
+  "data_root": "<absolute-private-data-directory>",
+  "pythonw": "<absolute-pythonw-path>",
+  "terminal": "<absolute-windows-terminal-path>",
+  "powershell": "<absolute-powershell-path>"
+}

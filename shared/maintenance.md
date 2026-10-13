@@ -50,6 +50,13 @@ state is authoritative; never treat a stale PID or installer as a ready device.
 
 ## Storage and dependencies
 
+For the independent Personal Experiment Box read [experiment-box](../docs/experiment-box.md).
+Its normal data starts empty; demo data remains memory-only. Never reuse the
+service config loader for trial storage. Malformed records stop without overwrite;
+failed writes keep both draft UI values and the previous committed snapshot.
+Confirm the complete user command and resolved directory before handing an
+immutable snapshot to the terminal Module. Handoff never establishes trial success.
+
 In Workspace use the existing approved Python/Qt runtime. Standalone clones may
 install declared dependencies in a dedicated environment under their host rules.
 Keep the tested PySide6 version

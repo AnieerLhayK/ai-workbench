@@ -76,6 +76,10 @@ class TerminalLauncher:
         except ValueError as error:
             self._emit(DispatchState(error=str(error)))
             return False
+        return self._dispatch(request)
+
+    def _dispatch(self, request):
+        """Dispatch a validated immutable snapshot through the adapter Seam."""
         self._emit(DispatchState(pending=True, project=request.project))
         completed = False
 
@@ -92,12 +96,27 @@ class TerminalLauncher:
         return True
 
 
+def _terminal_argv(config: dict, project: str, script: str, title: str) -> list[str]:
+    """Internal Windows Terminal grammar shared by explicitly confirmed launchers."""
+    paths = {}
+    for key in ("terminal", "powershell"):
+        value = config.get(key)
+        if not isinstance(value, str) or not Path(value).is_absolute() or not Path(value).is_file():
+            raise ValueError(f"本机启动环境缺失：{key}")
+        paths[key] = value
+    encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
+    command = [paths["terminal"], "-w", "new", "new-tab", "--title", title,
+               "--startingDirectory", project, paths["powershell"], "-NoLogo", "-NoProfile", "-NoExit",
+               "-EncodedCommand", encoded]
+    return [command[0], *(value.replace(";", "\\;") for value in command[1:])]
+
+
 def terminal_command(config: dict, request: LaunchRequest) -> list[str]:
     """Paths are PowerShell literals inside UTF-16 encoding; no user shell fragments."""
     project = project_path(request.project)
     if request.tool not in ("codex", "claude") or request.mode not in ("new", "resume"):
         raise ValueError("未知终端启动请求")
-    keys = ("terminal", "powershell", request.tool + "_cli")
+    keys = (request.tool + "_cli",)
     paths = {}
     for key in keys:
         value = config.get(key)
@@ -109,27 +128,24 @@ def terminal_command(config: dict, request: LaunchRequest) -> list[str]:
                 ("claude", "new"): "", ("claude", "resume"): " --continue"}
     script = ("Set-Location -LiteralPath " + literal(project) + "; "
               "& " + literal(paths[request.tool + "_cli"]) + cli_args[(request.tool, request.mode)])
-    encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
-    command = [paths["terminal"], "-w", "new", "new-tab", "--title", "muti-ai · " + request.tool,
-            "--startingDirectory", project, paths["powershell"], "-NoLogo", "-NoProfile", "-NoExit",
-            "-EncodedCommand", encoded]
     # Terminal splits even quoted arguments on semicolons before parsing its
     # subcommands. Escape that additional grammar, not just Windows argv.
-    return [command[0], *(value.replace(";", "\\;") for value in command[1:])]
+    return _terminal_argv(config, project, script, "muti-ai · " + request.tool)
 
 
 class WindowsTerminalAdapter(QObject):
     """Asynchronous Windows Terminal handoff. Child shells outlive the GUI."""
-    def __init__(self, config, parent=None):
+    def __init__(self, config, parent=None, *, command_builder=terminal_command):
         super().__init__(parent)
         self.config = config
+        self.command_builder = command_builder
         self.process = None
         self.timer = QTimer(self)
         self.timer.setInterval(50)
 
     def request(self, request, complete):
         try:
-            command = terminal_command(self.config, request)
+            command = self.command_builder(self.config, request)
         except ValueError as error:
             complete(str(error))
             return

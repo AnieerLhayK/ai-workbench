@@ -1,10 +1,23 @@
 # ai-workbench
 
 Personal helper tools and results. Capabilities are limited and usefulness on
-other machines is not guaranteed. Version 0.3 provides **muti-ai**, a native Qt
+other machines is not guaranteed. Version 0.4 provides **muti-ai**, a native Qt
 window with independent Commander/Hermes controls, project terminal launchers
 for Codex and Claude Code, and an explicit demo.
 Workspace remains the authoritative source.
+
+## Personal Experiment Box
+
+The independent **个人试验盒** desktop entry manages manual trial cards, tags,
+status, goals and next actions. Confirm a saved PowerShell command and directory
+to open a visible terminal; then record results and file references manually.
+Reopening restores cards and selection. Closing the window keeps terminals alive.
+No Pi calls, automatic logging or process control are included.
+
+Run `python -B scripts/launch_experiment_box.py --demo` for memory-only examples,
+or `--config <external-config>` for persistence. Normal first use is empty.
+See [experiment-box](docs/experiment-box.md) for independent configuration,
+desktop deployment and verification. muti-ai controls retain their separate entry.
 
 This public repository uses independent projection history. Own content is
 [MIT](LICENSE); dependencies retain their own licenses. Issues welcome feedback

@@ -1,5 +1,6 @@
 """Render the owned vector mark into a Windows multi-resolution icon."""
 import struct
+import argparse
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -8,8 +9,11 @@ from PySide6.QtGui import QIcon
 from ai_workbench.app import ASSETS, create_application
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--name", choices=("muti-ai", "experiment-box"), default="muti-ai")
+    args = parser.parse_args()
     app = create_application()
-    icon = QIcon(str(ASSETS / "muti-ai.svg"))
+    icon = QIcon(str(ASSETS / (args.name + ".svg")))
     images = []
     for size in (16, 24, 32, 48, 64, 128, 256):
         buffer = QBuffer()
@@ -21,4 +25,4 @@ if __name__ == "__main__":
     for size, data in images:
         entries.append(struct.pack("<BBBBHHII", size % 256, size % 256, 0, 0, 1, 32, len(data), offset))
         offset += len(data)
-    (ASSETS / "muti-ai.ico").write_bytes(struct.pack("<HHH", 0, 1, len(images)) + b"".join(entries) + b"".join(data for _, data in images))
+    (ASSETS / (args.name + ".ico")).write_bytes(struct.pack("<HHH", 0, 1, len(images)) + b"".join(entries) + b"".join(data for _, data in images))
