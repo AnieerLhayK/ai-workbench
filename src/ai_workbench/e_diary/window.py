@@ -186,8 +186,7 @@ class DiaryWindow(QMainWindow):
             self.list_heading.setText(KINDS.get(key, "回收站"))
             self.search.setPlaceholderText("搜索" + KINDS.get(key, "回收站"))
             self.generate.setVisible(key in ("development", "work", "personal"))
-            self.editor.record = None
-            self.editor.setEnabled(False)
+            self.editor.clear(key)
             self.refresh_list()
             if self.list.count(): self.list.setCurrentRow(0)
 

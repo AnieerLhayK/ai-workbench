@@ -128,6 +128,32 @@ class Editor(QWidget):
         self.tags.textChanged.connect(self.changed)
         self.body.textChanged.connect(self.changed)
         self.date.dateChanged.connect(self.changed)
+        self.clear()
+
+    def clear(self, kind="diary"):
+        self.timer.stop()
+        self.loading = True
+        self.record = None
+        self.dirty = self.conflicted = False
+        for widget in (self.title, self.tags, self.body):
+            widget.clear()
+        self.status.setText("暂无记录")
+        self.count.clear()
+        self.message.clear()
+        self.period.clear()
+        for widget in (self.generated_label, self.regen, self.sources, self.restore,
+                       self.reload_button, self.keep_button, self.period):
+            widget.hide()
+        self.date.setVisible(kind == "diary")
+        self.tags.setVisible(kind == "diary")
+        self.toolbar_widget.setVisible(kind == "diary")
+        self.preview_button.hide()
+        self.body.setPlaceholderText("点击左侧「新建日记」开始记录。" if kind == "diary"
+                                     else "选择时期查看记录，或点击「立即生成」。" if kind != "trash"
+                                     else "回收站中暂无选中的记录。")
+        self.stack.setCurrentIndex(0)
+        self.update_preview()
+        self.loading = False
         self.setEnabled(False)
 
     def changed(self, *args):
@@ -148,6 +174,7 @@ class Editor(QWidget):
         self.loading = True
         self.record = deepcopy(record)
         self.setEnabled(True)
+        self.preview_button.show()
         self.title.setText(record["title"])
         self.date.setDate(QDate.fromString(record["date"], "yyyy-MM-dd"))
         self.tags.setText(", ".join(record.get("tags", [])))
@@ -328,8 +355,7 @@ class Editor(QWidget):
                 self.library.purge(entry_id, confirmed=True)
             else:
                 self.library.delete(entry_id)
-            self.record = None
-            self.setEnabled(False)
+            self.clear()
             self.saved.emit("")
         except (DiaryError, OSError) as error:
             self.message.setText(str(error))
@@ -338,8 +364,7 @@ class Editor(QWidget):
         try:
             entry_id = self.record["id"]
             self.library.restore(entry_id)
-            self.record = None
-            self.setEnabled(False)
+            self.clear()
             self.saved.emit("")
         except (DiaryError, OSError) as error:
             self.message.setText(str(error))

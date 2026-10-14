@@ -115,6 +115,22 @@ def test_dirty_diary_selection_survives_saved_signal_refresh(qt_app):
     window.close()
 
 
+def test_empty_section_clears_previous_body_and_record_actions(qt_app):
+    window = create_window(demo=True)
+    assert window.editor.body.toPlainText()
+    for entry in window.library.query(kind="work"):
+        window.library.delete(entry["id"])
+    window.navigate("work")
+    editor = window.editor
+    assert editor.record is None and editor.body.toPlainText() == ""
+    assert editor.title.text() == "" and editor.preview.toPlainText() == ""
+    assert editor.chart is None and editor.status.text() == "暂无记录"
+    assert all(widget.isHidden() for widget in (editor.generated_label, editor.regen, editor.sources, editor.restore))
+    window.new_entry()
+    assert editor.isEnabled() and not editor.preview_button.isHidden()
+    window.close()
+
+
 def test_history_restores_revision_owned_metadata(tmp_path):
     library = DiaryLibrary(tmp_path)
     first = library.save(fields(kind="personal", format=".txt", tags=["旧标签"], sources=[{"id": "old-source"}],
