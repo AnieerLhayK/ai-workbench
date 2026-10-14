@@ -15,6 +15,7 @@ dev = ["pytest>=8,<10"]
 [project.scripts]
 ai-workbench = "ai_workbench.app:main"
 experiment-box = "ai_workbench.experiment_box.app:main"
+e-diary = "ai_workbench.e_diary.app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

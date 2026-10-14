@@ -1,0 +1,10 @@
+{
+  "data_root": "<absolute-private-data-directory>",
+  "codex_cli": "<absolute-existing-codex-executable>",
+  "prose_path": "<absolute-live-prose.md>",
+  "zf_root": "<absolute-live-zf-skill-directory>",
+  "staging_root": "<absolute-approved-staging-directory>",
+  "source_roots": ["<absolute-workspace-git-root>", "<absolute-project-collection-root>"],
+  "read_codex": true,
+  "generation_timeout_seconds": 900
+}

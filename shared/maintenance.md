@@ -50,6 +50,15 @@ state is authoritative; never treat a stale PID or installer as a ready device.
 
 ## Storage and dependencies
 
+For e-Diary follow [its storage and generation contract](../docs/e-diary.md).
+Treat the entry descriptor as the text revision commit point. The previous
+revision must remain readable when saving fails. Keep generation work off the
+GUI thread and marshal completion through signals; a cancelled or duplicate
+completion must not publish or advance cycle coverage. Rebuild search state from
+private files; do not make an index the only owner of diary content. Generated
+reviews and source-backed charts are read in-app, with live style resources
+resolved for each task rather than bundled into the public projection.
+
 For the independent Personal Experiment Box read [experiment-box](../docs/experiment-box.md).
 Its normal data starts empty; demo data remains memory-only. Never reuse the
 service config loader for trial storage. Malformed records stop without overwrite;

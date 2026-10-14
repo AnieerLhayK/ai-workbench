@@ -10,7 +10,7 @@ from ai_workbench.app import ASSETS, create_application
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--name", choices=("muti-ai", "experiment-box"), default="muti-ai")
+    parser.add_argument("--name", choices=("muti-ai", "experiment-box", "e-diary"), default="muti-ai")
     args = parser.parse_args()
     app = create_application()
     icon = QIcon(str(ASSETS / (args.name + ".svg")))

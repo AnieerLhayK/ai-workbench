@@ -4,6 +4,17 @@
 0.4 版提供 **muti-ai** 原生 Qt 窗口：独立的 Commander/Hermes 控制开关、
 Codex 与 Claude Code 项目终端入口，以及显式模拟演示。Workspace 保持源码权威。
 
+## e-Diary
+
+独立 Qt 应用 **e-Diary** 支持 Markdown／纯文本日记编辑，以及按时期直接查看
+开发、工作和个人状态总结。软件打开期间可运行独立周期 loop，通过已有本机
+Codex CLI 生成内容；主题汇报可输出正文、证据、数据、PDF 与有来源的图表。
+数据与实时写作资源放在源码之外。本软件不具备脱敏能力。
+
+运行 `python -B scripts/launch_e_diary.py --demo`，或使用
+`--config <外部配置.json>`。真实首次使用为空；演示不读取真实资料、不调用 Codex。
+存储、导入、周期、配置、安装与验收见 [e-Diary](docs/e-diary.md)。
+
 ## 个人试验盒
 
 新增独立桌面入口 **个人试验盒**：管理试验卡片、标签、状态、目标与下一步。

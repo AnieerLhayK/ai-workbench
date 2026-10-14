@@ -17,6 +17,11 @@ For personal trial cards and user-confirmed commands, read
 [experiment-box](docs/experiment-box.md) for its storage, launch and native
 acceptance contracts; it is a separate entry from muti-ai.
 
+For e-Diary read [its contract](docs/e-diary.md). It is a separate Qt entry with
+external text revisions, bounded evidence collection and cancellable Codex jobs.
+Its task-submitting Adapter must not change the existing terminal launchers'
+handoff-only contract. Demo must not read real sessions, roots or live styles.
+
 For terminal actions read [project terminals](docs/project-terminals.md): dispatch
 semantics, project preferences and optional local configuration. Verify new/resume
 commands without submitting model tasks. Terminal actions use launch/observe;

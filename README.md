@@ -6,6 +6,19 @@ window with independent Commander/Hermes controls, project terminal launchers
 for Codex and Claude Code, and an explicit demo.
 Workspace remains the authoritative source.
 
+## e-Diary
+
+The independent **e-Diary** Qt application edits Markdown/plain-text diaries and
+reads development, work and personal summaries directly by period. Optional
+in-app loops use the existing local Codex CLI; topic reports produce evidence
+packages with text, data, PDF and source-backed charts. Data and live writing
+resources stay outside source. It does not desensitize material.
+
+Run `python -B scripts/launch_e_diary.py --demo` or
+`--config <external-config.json>`. Real first use starts empty; demo never reads
+real sources or calls Codex. See [e-Diary](docs/e-diary.md) for storage, imports,
+loop behavior, configuration, installation and verification.
+
 ## Personal Experiment Box
 
 The independent **个人试验盒** desktop entry manages manual trial cards, tags,
