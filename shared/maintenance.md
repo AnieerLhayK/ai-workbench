@@ -61,7 +61,11 @@ resolved for each task rather than bundled into the public projection.
 
 For the independent Personal Experiment Box read [experiment-box](../docs/experiment-box.md).
 Its normal data starts empty; demo data remains memory-only. Never reuse the
-service config loader for trial storage. Malformed records stop without overwrite;
+service-control config loader for trial storage. UI, CLI and assistant use
+ExperimentService. Critical proposals require native human approval; untrusted
+JSON cannot approve, run or invoke the manual terminal. Verify actual native
+read/write/network/child restrictions before offline execution. Unsupported
+isolation stops without fallback. Malformed records stop without overwrite;
 failed writes keep both draft UI values and the previous committed snapshot.
 Confirm the complete user command and resolved directory before handing an
 immutable snapshot to the terminal Module. Handoff never establishes trial success.
@@ -75,6 +79,14 @@ Source, example configuration and durable docs stay here. Screenshots, test
 temporary files and preview output use host staging; remove transients after
 successful use. Future runtime state and credentials belong in an approved
 external data directory, not a public export.
+
+When closing a trial window, disconnect terminal observers and widget-capturing
+callbacks before Qt teardown. Cancel/join generation and retain failed-save results
+for an explicit save retry; retrying must reuse the original operation ID. Approved
+detached scripts keep their own lifecycle and actual interruption/output receipts.
+Block window closure while an assistant save retry remains pending. A process-held
+per-request lock identifies live workers; missing workers become interrupted
+receipts with unknown output/exit code, never fabricated results or automatic retries.
 
 Application creation selects the loaded Qt runtime's platform plugin directory
 through an application argument. Keep plugin selection local to the application;

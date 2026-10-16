@@ -1,7 +1,7 @@
 # ai-workbench
 
 主要帮助个人工作的辅助工具与成果集合。能力有限，不保证其他机器上的普适可用性。
-0.4 版提供 **muti-ai** 原生 Qt 窗口：独立的 Commander/Hermes 控制开关、
+0.5 版提供 **muti-ai** 原生 Qt 窗口：独立的 Commander/Hermes 控制开关、
 Codex 与 Claude Code 项目终端入口，以及显式模拟演示。Workspace 保持源码权威。
 
 ## e-Diary
@@ -17,14 +17,18 @@ Codex CLI 生成内容；主题汇报可输出正文、证据、数据、PDF 与
 
 ## 个人试验盒
 
-新增独立桌面入口 **个人试验盒**：管理试验卡片、标签、状态、目标与下一步。
-确认保存的 PowerShell 命令和工作目录后打开可见终端，再手动记录结果及文件路径。
-重新打开恢复卡片与选中项；关闭试验盒保留终端。首版不调用 Pi、不自动采集日志
-或管理试验进程启停，muti-ai 保持独立入口。
+独立桌面入口 **个人试验盒** 提供试验卡片、绑定安装配置的专用 CLI 和内置
+Codex 助手。普通更新自动保存；目标调整、标记完成、批量变更与脚本计划由用户
+在原生界面审批。按试验恢复对话及实际结果，另有总览对话和五个 `@` 模板。
+复用 Codex 管理的 ChatGPT 登录，生成时禁用工具、宿主技能和通用 Shell。
+自动离线脚本必须通过原生 Windows 隔离验证，运行环境不兼容时阻止执行。
+保留手动编辑和单独确认的人工终端入口，不接 Pi；muti-ai 保持独立入口。
 
 运行 `python -B scripts/launch_experiment_box.py --demo` 查看仅存于内存的示例，
 或通过 `--config <外部配置>` 持久使用。正常首次打开为空。
 独立配置、桌面安装和验证规则见 [experiment-box](docs/experiment-box.md)。
+JSON 接口、审批边界、资料限制和运行环境要求见
+[CLI 与助手调用指南](docs/experiment-box-cli.md)。
 
 本公开仓库使用独立投影历史。自有内容采用 [MIT](LICENSE)，依赖保留各自许可。
 Issues 开放反馈，不承诺通用支持；外部 PR 先迁回 Workspace 审阅，再由登记发布器

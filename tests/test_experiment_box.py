@@ -49,7 +49,7 @@ def test_storage_roundtrip_search_edit_record_and_selection(tmp_path):
     trial = restored.trials("更新")[0]
     assert trial["status"] == "待开始"
     assert trial["next_action"] == "重复验证"
-    assert trial["records"][0]["paths"] == [reference]
+    assert trial["records"][-1]["paths"] == [reference]
     copy = restored.snapshot()
     copy["trials"].clear()
     assert len(restored.trials()) == 2
@@ -185,7 +185,7 @@ def test_forms_keep_drafts_on_failure_and_cancel(qt_app, tmp_path):
     store.writer = denied
     result.save()
     assert result.result_text.toPlainText() == "结果" and "保存失败" in result.error.text()
-    assert store.trials()[0]["records"] == []
+    assert len(store.trials()[0]["records"]) == 1  # only the earlier manual creation
 
 
 def test_empty_search_keyboard_and_record_view(qt_app):
@@ -206,7 +206,7 @@ def test_empty_search_keyboard_and_record_view(qt_app):
     assert window.heading.text() == "Commander 连接试验"
     store.record(window.current_id, "<b>plain text</b>", "继续", [])
     window.show_trial()
-    assert window.records_layout.count() == 2
+    assert window.records_layout.count() == 1 + len(store.trials()[1]["records"])
     assert window.minimumWidth() == 1000 and window.minimumHeight() == 700
     window.close()
 

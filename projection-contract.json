@@ -86,6 +86,16 @@
     "examples/e-diary.config.example.json",
     "src/ai_workbench/assets/e-diary.svg",
     "src/ai_workbench/assets/e-diary.ico",
-    "src/ai_workbench/assets/check.svg"
+    "src/ai_workbench/assets/check.svg",
+    "src/ai_workbench/experiment_box/assistant.py",
+    "src/ai_workbench/experiment_box/assistant_policy.md",
+    "src/ai_workbench/experiment_box/assistant_ui.py",
+    "src/ai_workbench/experiment_box/cli.py",
+    "src/ai_workbench/experiment_box/materials.py",
+    "src/ai_workbench/experiment_box/runner.py",
+    "src/ai_workbench/experiment_box/service.py",
+    "docs/experiment-box-cli.md",
+    "scripts/run_experiment.py",
+    "tests/test_experiment_service.py"
   ]
 }

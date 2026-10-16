@@ -10,7 +10,10 @@
    Use Python 3.13+ / PySide6 6.9.2, with declared dependencies in a dedicated
    environment for standalone development. No global dependency
    installation is part of ordinary development.
-5. For GUI changes launch a native window. Review five collapsible categories,
+5. For GUI changes launch a native window. For Personal Experiment Box follow
+   its trial contract: three columns, overview/trial selection, assistant drawer,
+   @ templates, draft retention, human review and external-write refresh. For
+   muti-ai review five collapsible categories,
    scrolling, empty hints, header focus/status and themes at normal and minimum
    size. Expand the two launcher groups, toggle start/stop, observe waiting animation and
    independently disabled requests. Check failure text with a controlled adapter. Browser checks are

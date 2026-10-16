@@ -12,6 +12,7 @@ from ..terminal import DemoTerminalAdapter, WindowsTerminalAdapter
 from .launch import ExperimentLauncher, command_argv
 from .model import TrialStore, demo_store
 from .window import ExperimentWindow
+from .service import ExperimentService
 
 ICON = Path(__file__).resolve().parents[1] / "assets" / "experiment-box.svg"
 
@@ -48,7 +49,8 @@ def main(argv=None):
             store = demo_store() if args.demo else TrialStore(root / "trials.json")
             adapter = DemoTerminalAdapter(app) if args.demo else WindowsTerminalAdapter(config, app, command_builder=command_argv)
             launcher = ExperimentLauncher(adapter)
-            window = ExperimentWindow(store, launcher, demo=args.demo)
+            service = ExperimentService(store, root)
+            window = ExperimentWindow(service, launcher, demo=args.demo, config=config, config_path=args.config)
             instance.attach(window)
             window.show()
             if sys.platform == "win32":

@@ -1,7 +1,7 @@
 # ai-workbench
 
 Personal helper tools and results. Capabilities are limited and usefulness on
-other machines is not guaranteed. Version 0.4 provides **muti-ai**, a native Qt
+other machines is not guaranteed. Version 0.5 provides **muti-ai**, a native Qt
 window with independent Commander/Hermes controls, project terminal launchers
 for Codex and Claude Code, and an explicit demo.
 Workspace remains the authoritative source.
@@ -21,21 +21,27 @@ loop behavior, configuration, installation and verification.
 
 ## Personal Experiment Box
 
-The independent **个人试验盒** desktop entry manages manual trial cards, tags,
-status, goals and next actions. Confirm a saved PowerShell command and directory
-to open a visible terminal; then record results and file references manually.
-Reopening restores cards and selection. Closing the window keeps terminals alive.
-No Pi calls, automatic logging or process control are included.
+The independent **个人试验盒** desktop entry offers trial cards, a dedicated
+installation-bound CLI and an in-app Codex assistant. Routine updates save
+automatically; goal changes, completion, bulk changes and script plans require
+native human review. Conversations and actual results persist per trial, with
+an overview conversation and five `@` templates. Existing ChatGPT authentication
+stays with Codex; tools, host skills and general shell access are disabled for
+generation. Automatic offline scripts require verified native Windows isolation;
+incompatible runtimes block execution. Manual editing and the separately
+confirmed legacy terminal remain available. No Pi calls are included.
 
 Run `python -B scripts/launch_experiment_box.py --demo` for memory-only examples,
 or `--config <external-config>` for persistence. Normal first use is empty.
 See [experiment-box](docs/experiment-box.md) for independent configuration,
 desktop deployment and verification. muti-ai controls retain their separate entry.
+See [the CLI and assistant guide](docs/experiment-box-cli.md) for the JSON contract,
+approval boundary, bounded attachments and supported-runtime requirements.
 
 This public repository uses independent projection history. Own content is
 [MIT](LICENSE); dependencies retain their own licenses. Issues welcome feedback
 without a promise of general support. External PRs return to Workspace for review
-and regeneration by the registered publisher. No installer is provided yet.
+and regeneration by the registered publisher. No packaged installer is distributed.
 
 The companion [Frame-for-AI-workspace](https://github.com/AnieerLhayK/Frame-for-AI-workspace)
 shows the workspace organization and maintenance methods behind these tools,

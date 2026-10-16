@@ -31,6 +31,7 @@ class TrialDialog(QDialog):
     def __init__(self, store, trial=None, parent=None):
         super().__init__(parent)
         self.store, self.trial_id = store, trial["id"] if trial else None
+        self.expected_version = trial.get("revision", 1) if trial else None
         self.saved_id = None
         self.setWindowTitle("编辑试验" if trial else "新建试验")
         self.setStyleSheet(STYLE)
@@ -94,7 +95,9 @@ class TrialDialog(QDialog):
         values["tags"] = values["tags"].replace("，", ",").split(",")
         values["status"] = self.status.currentText()
         try:
-            self.saved_id = self.store.save(values, self.trial_id)
+            from .service import ExperimentService
+            self.saved_id = (self.store.save(values, self.trial_id, self.expected_version) if isinstance(self.store, ExperimentService)
+                             else self.store.save(values, self.trial_id))
         except StoreError as error:
             self.error.setText(str(error))
             return
@@ -105,6 +108,7 @@ class ResultDialog(QDialog):
     def __init__(self, store, trial, parent=None):
         super().__init__(parent)
         self.store, self.trial_id = store, trial["id"]
+        self.expected_version = trial.get("revision", 1)
         self.setWindowTitle("记录结果 · " + trial["name"])
         self.setStyleSheet(STYLE)
         self.resize(650, 550)
@@ -138,7 +142,7 @@ class ResultDialog(QDialog):
 
     def save(self):
         try:
-            self.store.record(self.trial_id, self.result_text.toPlainText(), self.next_action.text(), self.paths.toPlainText().splitlines())
+            self.store.record(self.trial_id, self.result_text.toPlainText(), self.next_action.text(), self.paths.toPlainText().splitlines(), self.expected_version)
         except StoreError as error:
             self.error.setText(str(error))
             return

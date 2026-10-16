@@ -13,7 +13,7 @@ Read [the maintenance contract](shared/maintenance.md) before changes. Load
 [the maintenance skill](skills/ai-workbench-maintainer/SKILL.md) when developing,
 testing or preparing a projection. It is development-only and unexposed here.
 
-For personal trial cards and user-confirmed commands, read
+For trial cards, bound CLI, assistant proposals, approvals and confirmed commands, read
 [experiment-box](docs/experiment-box.md) for its storage, launch and native
 acceptance contracts; it is a separate entry from muti-ai.
 

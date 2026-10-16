@@ -2,14 +2,20 @@
 from copy import deepcopy
 from datetime import datetime, timezone
 import json
+from contextlib import contextmanager
 from pathlib import Path
+import time
 from urllib.parse import urlparse
 from uuid import uuid4
 
-from ..storage import atomic_json
+from ..storage import atomic_json, ProcessLock
 
 STATUSES = ("待开始", "试验中", "暂停", "已完成")
 TEXT_FIELDS = ("name", "source", "goal", "directory", "command", "next_action", "status")
+FIELD_LABELS = {"name": "名称", "source": "来源链接", "goal": "试验目标", "directory": "工作目录",
+                "command": "PowerShell 命令", "next_action": "下一步", "status": "状态", "tags": "标签"}
+REQUEST_LABELS = {"applied": "已保存", "pending": "待你确认", "conflict": "版本冲突", "rejected": "已拒绝",
+                  "cancelled": "已取消", "approved": "已批准", "running": "运行中", "finished": "执行结束", "failed": "执行失败"}
 
 
 class StoreError(ValueError):
@@ -48,7 +54,7 @@ def validate_time(value):
 
 
 def validate_document(value):
-    if not isinstance(value, dict) or value.get("version") != 1 or not isinstance(value.get("trials"), list):
+    if not isinstance(value, dict) or value.get("version") not in (1, 2) or not isinstance(value.get("trials"), list):
         raise StoreError("不支持的试验数据格式")
     ids = set()
     for trial in value["trials"]:
@@ -69,19 +75,129 @@ def validate_document(value):
     selected = value.get("selected_id")
     if selected is not None and (not isinstance(selected, str) or selected not in ids):
         raise StoreError("选中试验不存在")
+    if value["version"] == 2:
+        if not isinstance(value.get("revision"), int) or not isinstance(value.get("requests"), dict) or not isinstance(value.get("conversations"), dict):
+            raise StoreError("版本与请求记录损坏")
+        for trial in value["trials"]:
+            if not isinstance(trial.get("revision"), int) or trial["revision"] < 1:
+                raise StoreError("试验版本损坏")
+        for request_id, receipt in value["requests"].items():
+            if (not isinstance(receipt, dict) or receipt.get("request_id") != request_id
+                    or receipt.get("status") not in {"pending", "applied", "conflict", "rejected", "cancelled", "approved", "running", "finished", "failed"}
+                    or not isinstance(receipt.get("operations"), list) or not isinstance(receipt.get("base"), dict)):
+                raise StoreError("请求历史损坏")
+            if (not receipt["operations"] or not isinstance(receipt.get("fingerprint"), str)
+                    or receipt.get("origin") not in ("cli", "assistant")
+                    or not isinstance(receipt.get("plan_hash"), str)
+                    or not isinstance(receipt.get("summary"), list)
+                    or any(not isinstance(s, str) for s in receipt["summary"])
+                    or not isinstance(receipt.get("versions"), dict)):
+                raise StoreError("请求历史字段损坏")
+            validate_time(receipt.get("at"))
+            if receipt["status"] not in ("rejected", "conflict"):
+                for op in receipt["operations"]:
+                    validate_operation(op, receipt["base"], ids)
+            if receipt["status"] in ("approved", "running", "finished"):
+                validate_time(receipt.get("approved_at"))
+                if len(receipt["operations"]) != 1 or receipt["operations"][0].get("action") != "plan":
+                    raise StoreError("执行请求损坏")
+        for messages in value["conversations"].values():
+            if not isinstance(messages, list):
+                raise StoreError("对话记录损坏")
+            for message in messages:
+                if (not isinstance(message, dict) or message.get("role") not in ("user", "assistant", "error")
+                        or not isinstance(message.get("text"), str)):
+                    raise StoreError("对话记录损坏")
+                validate_time(message.get("at"))
     return value
+
+
+def validate_operation(op, base, ids):
+    if not isinstance(op, dict) or op.get("action") not in ("create", "update", "observe", "plan"):
+        raise StoreError("操作历史损坏")
+    action = op["action"]
+    if action != "create":
+        trial_id = op.get("trial_id")
+        if (not isinstance(trial_id, str) or trial_id not in ids or type(op.get("expected_version")) is not int
+                or not isinstance(base.get(trial_id), dict) or type(base[trial_id].get("revision")) is not int):
+            raise StoreError("操作版本历史损坏")
+    if action in ("create", "update"):
+        fields = op.get("fields")
+        if (not isinstance(fields, dict) or not fields or set(fields) - ({*TEXT_FIELDS, "tags"} - {"directory", "command"})
+                or any(not isinstance(v, str) for k, v in fields.items() if k != "tags")
+                or ("tags" in fields and (not isinstance(fields["tags"], list) or any(not isinstance(t, str) for t in fields["tags"])))):
+            raise StoreError("操作字段历史损坏")
+    elif action == "observe":
+        if (any(not isinstance(op.get(k), str) for k in ("result", "next_action"))
+                or not isinstance(op.get("references"), list) or any(not isinstance(p, str) for p in op["references"])):
+            raise StoreError("观察历史损坏")
+    else:
+        if (op.get("runtime") not in ("python", "powershell")
+                or any(not isinstance(op.get(k), str) for k in ("goal", "script"))
+                or type(op.get("timeout_seconds")) is not int or not 1 <= op["timeout_seconds"] <= 300
+                or not isinstance(op.get("files"), list)
+                or any(not isinstance(f, dict) or any(not isinstance(f.get(k), str) for k in ("path", "content")) for f in op["files"])
+                or not isinstance(base[op["trial_id"]].get("files"), dict)):
+            raise StoreError("计划历史损坏")
 
 
 class TrialStore:
     """All callers read copies; state changes only after the writer succeeds."""
     def __init__(self, path: Path | None, *, writer=atomic_json):
         self.path, self.writer = path, writer
+        self.persisted = bool(path is not None and path.exists())
         self.document = {"version": 1, "selected_id": None, "trials": []}
         if path is not None and path.exists():
             try:
                 self.document = validate_document(json.loads(path.read_text(encoding="utf-8-sig")))
             except (OSError, ValueError, TypeError, KeyError) as error:
                 raise StoreError("试验数据无法读取；原文件已保留，请检查或恢复备份") from error
+
+    def reload(self):
+        if self.path and self.persisted and not self.path.exists():
+            raise StoreError("试验数据文件已丢失；请检查原文件或备份，未重建数据")
+        if self.path and self.path.exists():
+            try:
+                self.document = validate_document(json.loads(self.path.read_text(encoding="utf-8-sig")))
+            except (OSError, ValueError, TypeError, KeyError) as error:
+                raise StoreError("试验数据无法读取；原文件已保留，请检查或恢复备份") from error
+
+    @contextmanager
+    def transaction(self):
+        lock = None
+        try:
+            if self.path:
+                deadline = time.monotonic() + 5
+                while True:
+                    lock = ProcessLock(self.path.with_suffix(".write.lock"))
+                    if lock.acquired:
+                        break
+                    if time.monotonic() >= deadline:
+                        raise StoreError("其他进程正在保存，请稍后重试")
+                    time.sleep(.025)
+                self.reload()
+            value = self.snapshot()
+            if value["version"] == 1:
+                if self.path and self.path.exists():
+                    backup = self.path.with_name("trials.v1.backup.json")
+                    if backup.exists() and backup.read_bytes() != self.path.read_bytes():
+                        backup = self.path.with_name("trials.v1.backup-" + str(uuid4()) + ".json")
+                    if not backup.exists():
+                        with backup.open("xb") as stream:
+                            stream.write(self.path.read_bytes())
+                value.update(version=2, revision=0, requests={}, conversations={})
+                for trial in value["trials"]:
+                    trial["revision"] = 1
+            yield value
+            if value == self.document:
+                return
+            value["revision"] += 1
+            self._commit(value)
+        except OSError as error:
+            raise StoreError("保存失败；编辑内容仍保留，请检查数据目录") from error
+        finally:
+            if lock:
+                lock.close()
 
     def snapshot(self):
         return deepcopy(self.document)
@@ -94,6 +210,7 @@ class TrialStore:
             except OSError as error:
                 raise StoreError("保存失败；编辑内容仍保留，请检查数据目录") from error
         self.document = value
+        self.persisted = bool(self.path and self.path.exists())
 
     def _find(self, value, trial_id):
         for trial in value["trials"]:
@@ -101,38 +218,44 @@ class TrialStore:
                 return trial
         raise StoreError("试验不存在")
 
-    def save(self, fields, trial_id=None):
+    def save(self, fields, trial_id=None, expected=None):
         fields = trial_fields(fields)
-        value = self.snapshot()
-        now = timestamp()
-        if trial_id is None:
-            trial_id = str(uuid4())
-            value["trials"].append(dict(fields, id=trial_id, created_at=now, updated_at=now, records=[]))
-        else:
-            self._find(value, trial_id).update(fields, updated_at=now)
-        value["selected_id"] = trial_id
-        self._commit(value)
+        if expected is None:
+            expected = self._find(self.document, trial_id).get("revision", 1) if trial_id else None
+        with self.transaction() as value:
+            now = timestamp()
+            if trial_id is None:
+                trial_id = str(uuid4())
+                value["trials"].append(dict(fields, id=trial_id, revision=1, created_at=now, updated_at=now, records=[]))
+            else:
+                trial = self._find(value, trial_id)
+                if trial["revision"] != expected:
+                    raise StoreError("试验已更新；请重新核对，草稿已保留")
+                trial.update(fields, updated_at=now, revision=expected + 1)
+            self._find(value, trial_id)["records"].append(dict(result="人工新建" if expected is None else "人工编辑", next_action=fields["next_action"], paths=[], at=now, origin="human", kind="change"))
+            value["selected_id"] = trial_id
         return trial_id
 
     def select(self, trial_id):
         if self.document["selected_id"] == trial_id:
             return
-        value = self.snapshot()
-        self._find(value, trial_id)
-        value["selected_id"] = trial_id
-        self._commit(value)
+        with self.transaction() as value:
+            if trial_id is not None:
+                self._find(value, trial_id)
+            value["selected_id"] = trial_id
 
-    def record(self, trial_id, result, next_action, paths):
+    def record(self, trial_id, result, next_action, paths, expected=None):
         if not isinstance(result, str) or not result.strip():
             raise StoreError("请填写试验结果")
         if not isinstance(next_action, str) or not isinstance(paths, list) or any(not isinstance(path, str) for path in paths):
             raise StoreError("结果字段格式错误")
-        value = self.snapshot()
-        trial = self._find(value, trial_id)
-        now = timestamp()
-        trial["records"].append(dict(result=result.strip(), next_action=next_action.strip(), paths=[p.strip() for p in paths if p.strip()], at=now))
-        trial.update(next_action=next_action.strip(), updated_at=now)
-        self._commit(value)
+        with self.transaction() as value:
+            trial = self._find(value, trial_id)
+            if expected is not None and trial["revision"] != expected:
+                raise StoreError("试验已更新；请重新核对，草稿已保留")
+            now = timestamp()
+            trial["records"].append(dict(result=result.strip(), next_action=next_action.strip(), paths=[p.strip() for p in paths if p.strip()], at=now, origin="human"))
+            trial.update(next_action=next_action.strip(), updated_at=now, revision=trial["revision"] + 1)
 
     def trials(self, query="", status="全部"):
         query = query.strip().casefold()

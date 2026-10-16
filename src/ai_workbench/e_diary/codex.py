@@ -11,6 +11,14 @@ import time
 from .library import DiaryError
 
 
+class RpcError(DiaryError):
+    """Protocol detail stays in memory; callers expose only safe categories."""
+    def __init__(self, method, error):
+        self.code = error.get("code")
+        self.detail = error.get("message", "")
+        super().__init__(f"Codex 历史 Interface 不可用：{method}；请检查 CLI 版本")
+
+
 def argv(executable, *arguments):
     path = Path(executable)
     if path.suffix.lower() in (".cmd", ".ps1"):
@@ -48,8 +56,8 @@ def drain(stream):
 
 
 class AppServer:
-    def __init__(self, executable, cwd, cancelled=None):
-        self.process = popen(argv(executable, "app-server", "--stdio"), cwd)
+    def __init__(self, executable, cwd, cancelled=None, *, options=(), client_name="e_diary", experimental=False):
+        self.process = popen(argv(executable, "app-server", "--stdio", *options), cwd)
         self.cancelled = cancelled or threading.Event()
         self.messages = queue.Queue()
         self.sequence = 0
@@ -66,21 +74,27 @@ class AppServer:
         self.diagnostics = threading.Thread(target=drain, args=(self.process.stderr,), daemon=True)
         self.diagnostics.start()
         try:
-            self.request("initialize", {"clientInfo": {"name": "e_diary", "version": "1.0.0"},
-                                        "capabilities": {"experimentalApi": False}})
+            self.request("initialize", {"clientInfo": {"name": client_name, "version": "1.0.0"},
+                                        "capabilities": {"experimentalApi": experimental}})
             self.process.stdin.write(json.dumps({"method": "initialized", "params": {}}) + "\n")
             self.process.stdin.flush()
         except Exception:
             self.close()
             raise
 
-    def request(self, method, params, timeout=45):
+    def send_request(self, method, params):
         self.sequence += 1
         request_id = self.sequence
         self.process.stdin.write(json.dumps({"id": request_id, "method": method, "params": params}) + "\n")
         self.process.stdin.flush()
+        return request_id
+
+    def request(self, method, params, timeout=45, *, on_poll=None):
+        request_id = self.send_request(method, params)
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
+            if on_poll:
+                on_poll()
             if self.cancelled.is_set():
                 raise DiaryError("任务已取消")
             try:
@@ -91,7 +105,7 @@ class AppServer:
                 raise DiaryError("Codex 历史连接已结束；请检查本机 CLI")
             if message.get("id") == request_id:
                 if "error" in message:
-                    raise DiaryError(f"Codex 历史 Interface 不可用：{method}；请检查 CLI 版本")
+                    raise RpcError(method, message["error"])
                 return message["result"]
         raise DiaryError("Codex 历史读取超时")
 
