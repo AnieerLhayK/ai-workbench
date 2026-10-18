@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "character-generator config",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "character_id",
+    "display_name",
+    "output_path",
+    "language",
+    "privacy_level",
+    "style_strength",
+    "target_tasks",
+    "forbidden_tasks",
+    "quote_policy",
+    "max_quote_chars",
+    "generate_reports"
+  ],
+  "properties": {
+    "character_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "minLength": 1
+    },
+    "display_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "corpus_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "corpus_sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path"],
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_type": {
+            "type": "string",
+            "enum": ["work", "chat", "profile", "notes", "mixed", "unknown"]
+          },
+          "role": {
+            "type": "string",
+            "minLength": 1
+          },
+          "include": {
+            "type": "boolean"
+          },
+          "generate_readme": {
+            "type": "boolean"
+          },
+          "readme_path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "speaker": {
+            "type": "string",
+            "minLength": 1
+          },
+          "speaker_rules": {
+            "type": "string"
+          },
+          "author_speaker": {
+            "type": "string",
+            "minLength": 1
+          },
+          "exclude_non_author_speakers": {
+            "type": "boolean"
+          },
+          "exclude_context_notes": {
+            "type": "boolean"
+          },
+          "start_after_time_marker": {
+            "type": "boolean"
+          },
+          "expand_worklist": {
+            "type": "boolean"
+          },
+          "include_readme_as_corpus": {
+            "type": "boolean"
+          },
+          "explicit": {
+            "type": "boolean"
+          },
+          "notes": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "output_path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^<>:\"|?*]+$"
+    },
+    "language": {
+      "type": "string",
+      "enum": ["zh-CN", "en", "mixed"]
+    },
+    "privacy_level": {
+      "type": "string",
+      "enum": ["low", "medium", "high"]
+    },
+    "style_strength": {
+      "type": "string",
+      "enum": ["light", "medium", "strong"]
+    },
+    "target_tasks": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": ["rewrite", "continuation", "imitation", "critique", "style_transfer", "discussion"]
+      }
+    },
+    "forbidden_tasks": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": ["impersonation", "private_fact_inference", "verbatim_reconstruction"]
+      }
+    },
+    "quote_policy": {
+      "type": "string",
+      "enum": ["none", "short_only"]
+    },
+    "max_quote_chars": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 500
+    },
+    "generate_opencode_skill": {
+      "type": "boolean",
+      "description": "Deprecated compatibility field. The generated package is platform-neutral; this value no longer selects build behavior."
+    },
+    "generate_reports": {
+      "type": "boolean"
+    },
+    "allow_absolute_corpus_paths": {
+      "type": "boolean"
+    },
+    "source_planning_enabled": {
+      "type": "boolean"
+    },
+    "generate_corpus_handoff": {
+      "type": "boolean"
+    },
+    "privacy_boundary": {
+      "type": "string"
+    },
+    "optional_missing_info": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "personal_profile": {
+      "type": "string"
+    },
+    "relationship_posture": {
+      "type": "string"
+    },
+    "source_normalization": {
+      "type": "string"
+    },
+    "local_only_reports": {
+      "type": "boolean"
+    },
+    "enabled": {
+      "type": "boolean"
+    }
+  }
+}

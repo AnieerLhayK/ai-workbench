@@ -1,0 +1,208 @@
+{
+  "schema": 1,
+  "source_package": "character-system",
+  "source_revision": "414a934c4074c98297e0aca441156da9e789b477",
+  "policy": "Read-only snapshot; ai-workbench owns its adapters. No runtime characters, private configs, corpus or reports are copied.",
+  "files": [
+    {
+      "source": "engineering/generation/character-generator/scripts/anonymize_corpus.py",
+      "target": "src/ai_workbench/e_chatter/resources/generator/scripts/anonymize_corpus.py",
+      "sha256": "a9ac9274df8022a89d9f3d85596701d0e832ecb7fef5c095282bf07a9080be64"
+    },
+    {
+      "source": "engineering/generation/character-generator/scripts/build_character.py",
+      "target": "src/ai_workbench/e_chatter/resources/generator/scripts/build_character.py",
+      "sha256": "cda35071c604256343276e4765eabe91562bfcffa7bec9fa320ec1339827981b"
+    },
+    {
+      "source": "engineering/generation/character-generator/scripts/chunk_corpus.py",
+      "target": "src/ai_workbench/e_chatter/resources/generator/scripts/chunk_corpus.py",
+      "sha256": "529f92167bfea205017c2fbaeb8184ed3a24441a1498316c2dfabccf2f886079"
+    },
+    {
+      "source": "engineering/generation/character-generator/scripts/corpus_stats.py",
+      "target": "src/ai_workbench/e_chatter/resources/generator/scripts/corpus_stats.py",
+      "sha256": "07b2a8924f69b529fd8b11b3e954edfe9e992a95ff85bb5ab8455b1f116da7b6"
+    },
+    {
+      "source": "engineering/generation/character-generator/scripts/extract_style.py",
+      "target": "src/ai_workbench/e_chatter/resources/generator/scripts/extract_style.py",
+      "sha256": "e299c01716699b2d8d3f1d6906a902a09871a0a49756b22652cbb89cb21825d6"
+    },
+    {
+      "source": "engineering/generation/character-generator/scripts/ingest_corpus.py",
+      "target": "src/ai_workbench/e_chatter/resources/generator/scripts/ingest_corpus.py",
+      "sha256": "e4845de8c334df3af1934f27afba42f932ded78fc4c45598b5fb0e6681eaf8bc"
+    },
+    {
+      "source": "engineering/generation/character-generator/scripts/intake_plan.py",
+      "target": "src/ai_workbench/e_chatter/resources/generator/scripts/intake_plan.py",
+      "sha256": "87e302a0e2628d45feb78eee01890fe19f71679f98256de1276e39d6268cbe2e"
+    },
+    {
+      "source": "engineering/generation/character-generator/scripts/validate_pack.py",
+      "target": "src/ai_workbench/e_chatter/resources/generator/scripts/validate_pack.py",
+      "sha256": "38f9f3afd03b2b5db812a7fd01689a66af8619023b4530e0988bc177242ff088"
+    },
+    {
+      "source": "engineering/generation/character-generator/scripts/write_manifest.py",
+      "target": "src/ai_workbench/e_chatter/resources/generator/scripts/write_manifest.py",
+      "sha256": "30c3153ff010ae06105215f62eb65e6c1d2498534e1339d3a40d5127547f83b2"
+    },
+    {
+      "source": "engineering/generation/character-generator/templates/anti_patterns.template.md",
+      "target": "src/ai_workbench/e_chatter/resources/generator/templates/anti_patterns.template.md",
+      "sha256": "4e3ecd04a9514833258b32743cb58644da7d6650d06792a5d5a63c35e78ffc68"
+    },
+    {
+      "source": "engineering/generation/character-generator/templates/character_README.template.md",
+      "target": "src/ai_workbench/e_chatter/resources/generator/templates/character_README.template.md",
+      "sha256": "e421c97bb88d853490261eac15dc5e8734deb446c65506aaa6320173cad31ef5"
+    },
+    {
+      "source": "engineering/generation/character-generator/templates/character_SKILL.template.md",
+      "target": "src/ai_workbench/e_chatter/resources/generator/templates/character_SKILL.template.md",
+      "sha256": "f5027fcb7e3e5d590314addf76695128fb084f0031b71fa28ed9e7b5ddc283f6"
+    },
+    {
+      "source": "engineering/generation/character-generator/templates/corpus_notes.template.md",
+      "target": "src/ai_workbench/e_chatter/resources/generator/templates/corpus_notes.template.md",
+      "sha256": "6a90c7526b1a963a723f6ae4055ad12395162ad09784f2be9096ff0649b13a0c"
+    },
+    {
+      "source": "engineering/generation/character-generator/templates/evaluation_rubric.template.md",
+      "target": "src/ai_workbench/e_chatter/resources/generator/templates/evaluation_rubric.template.md",
+      "sha256": "4739adf15e9e8aaf9d37bd780e89dcca162c0e21bb40c087035522f1299ac7ee"
+    },
+    {
+      "source": "engineering/generation/character-generator/templates/example_fragments.template.md",
+      "target": "src/ai_workbench/e_chatter/resources/generator/templates/example_fragments.template.md",
+      "sha256": "656bd65f7e92528b92390b4e3603b9bfef95c861b2f22534c7a8baa01e441773"
+    },
+    {
+      "source": "engineering/generation/character-generator/templates/imagery_and_themes.template.md",
+      "target": "src/ai_workbench/e_chatter/resources/generator/templates/imagery_and_themes.template.md",
+      "sha256": "3d37811e73a7284632bb317a434f489557380772130b7784e765b98e919df5e6"
+    },
+    {
+      "source": "engineering/generation/character-generator/templates/prompt_continuation.template.md",
+      "target": "src/ai_workbench/e_chatter/resources/generator/templates/prompt_continuation.template.md",
+      "sha256": "439d008127661b3bae7a003a7f492c817c8e5318c35c2917d85ce2541ebcb2f1"
+    },
+    {
+      "source": "engineering/generation/character-generator/templates/prompt_critique.template.md",
+      "target": "src/ai_workbench/e_chatter/resources/generator/templates/prompt_critique.template.md",
+      "sha256": "ea5980d9da8acfbd48fd3b9a6757dbe48ae2ff76364387c0ad186fbf7bda8504"
+    },
+    {
+      "source": "engineering/generation/character-generator/templates/prompt_discussion.template.md",
+      "target": "src/ai_workbench/e_chatter/resources/generator/templates/prompt_discussion.template.md",
+      "sha256": "608f3d0fa95e85158aa3528d0a3406e4537a4994706fa3cb65ec453b1d288443"
+    },
+    {
+      "source": "engineering/generation/character-generator/templates/prompt_imitation.template.md",
+      "target": "src/ai_workbench/e_chatter/resources/generator/templates/prompt_imitation.template.md",
+      "sha256": "9e8d62540643c66a4cf6a0a64432d3678bb3bb57319d4d043c05c0d369f9d10a"
+    },
+    {
+      "source": "engineering/generation/character-generator/templates/prompt_rewrite.template.md",
+      "target": "src/ai_workbench/e_chatter/resources/generator/templates/prompt_rewrite.template.md",
+      "sha256": "98a1719d06f3e9282d89e034625a2416a18bc4c7146b6635a858c91310977dd0"
+    },
+    {
+      "source": "engineering/generation/character-generator/templates/prompt_style_transfer.template.md",
+      "target": "src/ai_workbench/e_chatter/resources/generator/templates/prompt_style_transfer.template.md",
+      "sha256": "6b5b1d71ba59ff5faca9c85e54ddc0ab09be33bfa891bb51dd1875f153bfc2d7"
+    },
+    {
+      "source": "engineering/generation/character-generator/templates/sentence_and_rhythm.template.md",
+      "target": "src/ai_workbench/e_chatter/resources/generator/templates/sentence_and_rhythm.template.md",
+      "sha256": "9b9aac5e9922db7177ccc0ecadfa11047c819a083e70faf30195d19621e4a634"
+    },
+    {
+      "source": "engineering/generation/character-generator/templates/style_profile.template.md",
+      "target": "src/ai_workbench/e_chatter/resources/generator/templates/style_profile.template.md",
+      "sha256": "66cb005c9b7ccab9ebc72c4d5a4b3836ca7598abd64e74e2eb4e5f5677555b8f"
+    },
+    {
+      "source": "engineering/generation/character-generator/templates/task_recipes.template.md",
+      "target": "src/ai_workbench/e_chatter/resources/generator/templates/task_recipes.template.md",
+      "sha256": "60b49d601e8a46d66030b781be99c1612223e59d50e9d13c4d20203d391314a2"
+    },
+    {
+      "source": "engineering/generation/character-generator/templates/validation_case_continuation.template.md",
+      "target": "src/ai_workbench/e_chatter/resources/generator/templates/validation_case_continuation.template.md",
+      "sha256": "56417a60191a47ba5fdd1ecbdc2ad397b381aab1bc6c2592ea598b13bbda7d22"
+    },
+    {
+      "source": "engineering/generation/character-generator/templates/validation_case_critique_too_ai.template.md",
+      "target": "src/ai_workbench/e_chatter/resources/generator/templates/validation_case_critique_too_ai.template.md",
+      "sha256": "ff7f6e36612516f0d20fe6b78fb88153127e135aacfc6f6e818f4d04a9e19fc9"
+    },
+    {
+      "source": "engineering/generation/character-generator/templates/validation_case_discussion.template.md",
+      "target": "src/ai_workbench/e_chatter/resources/generator/templates/validation_case_discussion.template.md",
+      "sha256": "8aeff8f54bb29dd00c7e2a4c8b60f22010fe111a8b9de35ae94d7e1af8e25ef8"
+    },
+    {
+      "source": "engineering/generation/character-generator/templates/validation_case_privacy_boundary.template.md",
+      "target": "src/ai_workbench/e_chatter/resources/generator/templates/validation_case_privacy_boundary.template.md",
+      "sha256": "758effa3b91779942e6b2c2cb84840f05f8568227b5e2e2b6c02bbe8e3c89044"
+    },
+    {
+      "source": "engineering/generation/character-generator/templates/validation_case_rewrite_basic.template.md",
+      "target": "src/ai_workbench/e_chatter/resources/generator/templates/validation_case_rewrite_basic.template.md",
+      "sha256": "3e7ae2967f92d66ee4d0d49178c4de0a5bc590b951a080ec96ab12bcec2f66bc"
+    },
+    {
+      "source": "engineering/generation/character-generator/templates/validation_case_style_strength.template.md",
+      "target": "src/ai_workbench/e_chatter/resources/generator/templates/validation_case_style_strength.template.md",
+      "sha256": "6b9e507e5ba9ebc34030e6a189047d331c145138726e50b94280069c9f713a59"
+    },
+    {
+      "source": "engineering/generation/character-generator/templates/validation_cases_README.template.md",
+      "target": "src/ai_workbench/e_chatter/resources/generator/templates/validation_cases_README.template.md",
+      "sha256": "fe357e3784cd76c270b2e307e0bc542726b3116e0e4b03c96cd5d36da0489004"
+    },
+    {
+      "source": "engineering/generation/character-generator/templates/vocabulary_bank.template.md",
+      "target": "src/ai_workbench/e_chatter/resources/generator/templates/vocabulary_bank.template.md",
+      "sha256": "f202e257a81b11ad44dfd7726cc94fecfb593aee1a382ad84703705ec15c49a6"
+    },
+    {
+      "source": "engineering/generation/character-generator/templates/voice_card.template.md",
+      "target": "src/ai_workbench/e_chatter/resources/generator/templates/voice_card.template.md",
+      "sha256": "6523609044dd57e3da0ba42b347e660dda4236a96082bc61e39cc18f7710a944"
+    },
+    {
+      "source": "engineering/generation/character-generator/templates/writing_patterns.template.md",
+      "target": "src/ai_workbench/e_chatter/resources/generator/templates/writing_patterns.template.md",
+      "sha256": "e8c077c46a96632507dbfc6cb72555ff16258990e2807ccae9c565b516a86599"
+    },
+    {
+      "source": "engineering/generation/character-generator/schemas/character_config.schema.json",
+      "target": "src/ai_workbench/e_chatter/resources/generator/schemas/character_config.schema.json",
+      "sha256": "e440f4a187e312dadb695fd27928991214d3cd436de8dc166da5bd9dfb2e4e69"
+    },
+    {
+      "source": "engineering/generation/character-generator/schemas/output_manifest.schema.json",
+      "target": "src/ai_workbench/e_chatter/resources/generator/schemas/output_manifest.schema.json",
+      "sha256": "39f07bdbb82b7bed925d2fd3385ea115589266781212130a87b040584486f284"
+    },
+    {
+      "source": "engineering/generation/character-generator/SKILL.md",
+      "adaptation": "resources/skills/generator/SKILL.md",
+      "sha256": "7090484e7f69fd5e804aaf20f783cbb40ea5caa070772471495c65949bed0a1d"
+    },
+    {
+      "source": "engineering/maintenance/character-maintainer/SKILL.md",
+      "adaptation": "resources/skills/maintainer/SKILL.md",
+      "sha256": "ce0cb43ddeda128cc2c2b28f0b7e1cebd65b9ce88186011056bee65d5105110d"
+    },
+    {
+      "source": "engineering/diagnosis/style-doctor/SKILL.md",
+      "adaptation": "resources/skills/doctor/SKILL.md",
+      "sha256": "34b5836894e11a7cb03d2b1169dbdeacb4825c6e751f07e76267e7bc170787e3"
+    }
+  ]
+}

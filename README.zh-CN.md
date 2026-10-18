@@ -144,3 +144,7 @@ Windows CI 使用 Python 3.13、PySide6 6.9.2 和 Qt offscreen 执行边界检�
 OpenCode Web、安装包与 Pi 接入留待后续，Claude Remote Control 不在本版范围。
 当前没有 Pi 应用；实际加入后，会在对应应用
 文档与本 README 注明上游仓库、用途和适用依赖许可。
+
+## e-Chatter
+
+独立 Windows 角色聊天平台，使用自己的 Codex 登录与本机角色。便携启动、源码构建、诊断与原件只读的修改流程见 [e-Chatter](docs/e-chatter.md)。

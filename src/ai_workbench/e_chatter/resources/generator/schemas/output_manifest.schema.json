@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "character-generator output manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "character_id",
+    "display_name",
+    "generated_at",
+    "generator",
+    "config",
+    "privacy",
+    "files"
+  ],
+  "properties": {
+    "character_id": {
+      "type": "string"
+    },
+    "display_name": {
+      "type": "string"
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "generator": {
+      "type": "string"
+    },
+    "config": {
+      "type": "object"
+    },
+    "privacy": {
+      "type": "object"
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "sha256", "bytes"],
+        "properties": {
+          "path": {"type": "string"},
+          "sha256": {"type": "string"},
+          "bytes": {"type": "integer"}
+        }
+      }
+    }
+  }
+}

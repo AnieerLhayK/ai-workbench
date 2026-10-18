@@ -19,7 +19,8 @@ the last confirmed running state. No speculative plugin framework is needed.
 
 Complete code changes with relevant lifecycle and Qt interaction tests, native
 window review for GUI changes, and portable preview verification for export
-changes. QtTest exercises native controls; browser testing is not applicable.
+changes. QtTest exercises native controls. e-Chatter's embedded React interface
+additionally requires browser interaction checks before native bridge checks.
 Always distinguish simulated evidence from actual service readiness. The native
 window groups tools using the portable read-only Catalog Module. ChatGPT owns
 Commander, Hermes owns Hermes Bot; Claude and Codex provide project terminal
@@ -49,6 +50,14 @@ identity, timeouts, connection semantics and local deployment. Observed process
 state is authoritative; never treat a stale PID or installer as a ready device.
 
 ## Storage and dependencies
+
+`codex_isolation` owns generation-only capability restrictions for e-Diary,
+the experiment assistant and e-Chatter. Keep policy/catalog/event checks shared,
+but preserve the two transports and their domain errors. Empty TOML maps merge
+with inherited entries: app-server must disable discovered MCP entries and
+verify readback before a model thread. Do not apply generation restrictions to
+the generic history/approved-experiment transport. Attachment limits must bound
+expanded bytes as well as compressed files, before parsing or registering data.
 
 For e-Diary follow [its storage and generation contract](../docs/e-diary.md).
 Treat the entry descriptor as the text revision commit point. The previous
@@ -121,3 +130,9 @@ Validate every distinct provider dependency in a connection diagnosis. A working
 public entry endpoint does not prove its session/database backend is reachable.
 Test inherited proxy behavior through the actual child launch boundary, keep
 network changes local to that child, and preserve explicit user overrides.
+
+For e-Chatter, configuration map overrides may merge with the user's Codex
+configuration. An empty MCP map does not prove isolation. Before any model thread,
+read effective settings, disable each discovered MCP entry, restart and verify
+all entries disabled along with execution features. Keep provider diagnostics
+limited to safe categories, never raw account/configuration dumps.

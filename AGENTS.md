@@ -22,6 +22,11 @@ external text revisions, bounded evidence collection and cancellable Codex jobs.
 Its task-submitting Adapter must not change the existing terminal launchers'
 handoff-only contract. Demo must not read real sessions, roots or live styles.
 
+For e-Chatter read [its contract](docs/e-chatter.md). Its React interface runs in
+QtWebEngine through a private WebChannel. Test browser interactions first, then
+native bridge and portable runtime. It owns separate local data and adapted
+engineering resources; never modify character-system or imported originals.
+
 For terminal actions read [project terminals](docs/project-terminals.md): dispatch
 semantics, project preferences and optional local configuration. Verify new/resume
 commands without submitting model tasks. Terminal actions use launch/observe;

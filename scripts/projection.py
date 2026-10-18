@@ -96,6 +96,10 @@ def check(root: Path, expected_revision=None, *, require_revision=False, expecte
         raise ValueError(f"Unexpected or missing preview files: {sorted(actual ^ set(files))}")
     validate_provenance(json.loads((root / GENERATED[0]).read_text(encoding="utf-8")), expected_revision, require_revision=require_revision)
     for name in files:
+        if name.endswith(".png"):
+            if not (root / name).read_bytes().startswith(b"\x89PNG\r\n\x1a\n"):
+                raise ValueError(f"Invalid design image in {name}")
+            continue
         if name.endswith(".ico"):
             if not (root / name).read_bytes().startswith(b"\x00\x00\x01\x00"):
                 raise ValueError(f"Invalid icon in {name}")

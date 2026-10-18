@@ -4,6 +4,13 @@ e-Diary is an independent native Qt application for text diaries, development an
 work summaries, personal reviews and topic-specific evidence packages. It calls
 the existing local Codex CLI directly; Pi and API keys are not required.
 
+Writing generation shares the package's tool-free Codex isolation policy with
+e-Chatter and the experiment assistant. It ignores user configuration and rules,
+disables tools/integrations, and uses an app-owned restricted model catalog.
+Unsupported isolation stops before submitting evidence; there is no permissive
+fallback. Authentication stays in Codex. History reading retains its separate
+transport and does not acquire generation or execution authority.
+
 ## Start
 
 Use the package's existing Python 3.13 / PySide6 6.9.2 environment:

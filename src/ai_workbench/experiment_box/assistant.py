@@ -1,7 +1,6 @@
 """Ephemeral, tool-free Codex proposals; host applies validated operations."""
 import json
 from pathlib import Path
-import subprocess
 import threading
 import time
 from uuid import uuid4
@@ -9,6 +8,7 @@ from uuid import uuid4
 from PySide6.QtCore import QObject, Signal
 
 from ..e_diary.codex import argv, popen, terminate, drain
+from .. import codex_isolation as isolation
 from .model import StoreError, REQUEST_LABELS
 
 SHORTCUTS = {
@@ -77,14 +77,6 @@ def operations(result):
     return converted
 
 
-DISABLED = ("shell_tool", "unified_exec", "code_mode", "code_mode_host", "apps", "browser_use",
-            "browser_use_external", "computer_use", "hooks", "view_image", "image_generation",
-            "skill_search", "skill_mcp_dependency_install", "multi_agent", "collab", "js_repl",
-            "memories", "daemon_auto_start", "tool_suggest", "plugins", "remote_plugin", "plugin_sharing",
-            "in_app_browser", "browser_annotation_api", "browser_use_full_cdp_access", "enable_mcp_apps",
-            "recommended_plugins", "request_permissions_tool", "sleep_tool", "shell_snapshot")
-
-
 class CodexAssistant:
     def __init__(self, config):
         self.config = config
@@ -93,39 +85,15 @@ class CodexAssistant:
     def generate(self, payload, directory, cancelled):
         if cancelled.is_set():
             raise StoreError("生成已取消")
-        executable = self.config["codex_cli"]
-        # The bundled catalog is metadata, not the user's history or credentials.
-        metadata = subprocess.run(argv(executable, "debug", "models", "--bundled"), capture_output=True,
-                                  timeout=30, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        if metadata.returncode:
-            raise StoreError("Codex 不支持受限模型配置；未发起生成")
-        catalog = json.loads(metadata.stdout.decode("utf-8"))
         policy = Path(__file__).with_name("assistant_policy.md").read_text(encoding="utf-8")
-        for model in catalog["models"]:
-            model.update(shell_type="disabled", apply_patch_tool_type=None, experimental_supported_tools=[],
-                         supports_search_tool=False, include_skills_usage_instructions=False,
-                         include_plugin_usage_instructions=False, include_apps_usage_instructions=False,
-                         base_instructions=policy)
-        catalog_path, schema, output = (directory / name for name in ("models.json", "schema.json", "response.json"))
-        catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
+        schema, output = (directory / name for name in ("schema.json", "response.json"))
         schema.write_text(json.dumps(SCHEMA), encoding="utf-8")
-        overrides = ["web_search=\"disabled\"", "project_doc_max_bytes=0", "skills.bundled.enabled=false",
-                     "skills.include_instructions=false", "features.skip_host_skill_discovery=true",
-                     "mcp_servers={}", "plugins={}", "tools.update_plan.enabled=false", "include_apps_instructions=false",
-                     "approval_policy=\"never\"", "model_catalog_json=" + json.dumps(str(catalog_path)),
-                     "developer_instructions=" + json.dumps(policy, ensure_ascii=False)]
-        command = argv(executable, "--no-daemon", "exec", "--ignore-user-config", "--ignore-rules", "--ephemeral",
-                       "--json", "--color", "never", "--skip-git-repo-check", "--sandbox", "read-only",
-                       "--output-schema", str(schema), "--output-last-message", str(output))
-        for feature in DISABLED:
-            command += ["--disable", feature]
-        for override in overrides:
-            command += ["-c", override]
-        command += ["-c", 'model_reasoning_effort="low"']
-        command += ["--model", self.config.get("model", "gpt-6.1-sol")]
-        for image in payload.pop("images", []):
-            command += ["--image", str(image)]
-        command += ["-"]
+        try:
+            command = isolation.exec_command(self.config["codex_cli"], argv, directory, schema, output,
+                policy=policy, model=self.config.get("model", "gpt-6.1-sol"), images=payload.get("images", []), reasoning="low")
+        except isolation.IsolationError as error:
+            raise StoreError(str(error)) from error
+        payload = {key: value for key, value in payload.items() if key != "images"}
         if cancelled.is_set():
             raise StoreError("生成已取消；未启动模型请求")
         process = popen(command, directory)
@@ -136,8 +104,7 @@ class CodexAssistant:
                 try:
                     event = json.loads(line)
                     self.phase = event.get("type", "等待响应")
-                    item = event.get("item", {})
-                    if item.get("type") in ("command_execution", "file_change", "mcp_tool_call", "web_search"):
+                    if isolation.is_tool_event(event):
                         unsafe.set()
                 except ValueError:
                     pass

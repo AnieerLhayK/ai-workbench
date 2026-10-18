@@ -9,6 +9,7 @@ import threading
 import time
 
 from .library import DiaryError
+from .. import codex_isolation as isolation
 
 
 class RpcError(DiaryError):
@@ -132,20 +133,28 @@ class CodexAdapter:
         self.config = config
 
     def generate(self, prompt, directory, cancelled, progress):
+        if cancelled.is_set():
+            raise DiaryError("任务已取消")
         schema = directory / "response-schema.json"
         schema.write_text(json.dumps(SCHEMA), encoding="utf-8")
         result_path = directory / "response.json"
-        command = argv(self.config["codex_cli"], "exec", "--ephemeral", "--json", "--color", "never",
-                       "--skip-git-repo-check", "--sandbox", "read-only", "--output-schema", str(schema),
-                       "--output-last-message", str(result_path), "-")
-        if self.config.get("model"):
-            command[command.index("-"):command.index("-")] = ["--model", self.config["model"]]
+        try:
+            command = isolation.exec_command(self.config["codex_cli"], argv, directory, schema, result_path,
+                policy="You are e-Diary's isolated writing task. Use only supplied evidence. Do not invoke tools or access files or external services. Return the required JSON.",
+                model=self.config.get("model"))
+        except isolation.IsolationError as error:
+            raise DiaryError(str(error)) from error
+        if cancelled.is_set():
+            raise DiaryError("任务已取消；未提交材料")
         process = popen(command, directory)
         thread_ids = []
+        unsafe = threading.Event()
         def read_events():
             for line in process.stdout:
                 try:
                     event = json.loads(line)
+                    if isolation.is_tool_event(event):
+                        unsafe.set()
                     if event.get("type") == "thread.started":
                         thread_ids.append(event["thread_id"])
                 except (ValueError, KeyError):
@@ -159,6 +168,8 @@ class CodexAdapter:
             process.stdin.close()
             deadline = time.monotonic() + self.config.get("generation_timeout_seconds", 900)
             while process.poll() is None:
+                if unsafe.is_set():
+                    raise DiaryError("Codex 触发范围外工具，未保存结果")
                 if cancelled.wait(.2):
                     raise DiaryError("任务已取消")
                 if time.monotonic() >= deadline:
@@ -169,6 +180,8 @@ class CodexAdapter:
             diagnostics.join(timeout=5)
             if reader.is_alive() or diagnostics.is_alive():
                 raise DiaryError("Codex 输出尚未结束，未提交不完整结果")
+            if unsafe.is_set():
+                raise DiaryError("Codex 触发范围外工具，未保存结果")
             result = json.loads(result_path.read_text(encoding="utf-8-sig"))
             result["thread_ids"] = thread_ids
             return result

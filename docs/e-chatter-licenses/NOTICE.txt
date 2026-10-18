@@ -1,0 +1,17 @@
+e-Chatter uses Python, PySide6/Qt 6.9.2, shiboken6, PyYAML,
+React, react-dom, react-markdown, lucide-react and their dependencies.
+The portable directory retains available upstream license notices.
+
+Qt and PySide are dynamically linked, unmodified libraries. Users may replace
+compatible library binaries. Their source and licensing information is available:
+https://www.qt.io/development/download-open-source
+https://code.qt.io/cgit/pyside/pyside-setup.git/?h=v6.9.2
+https://code.qt.io/cgit/qt/qtbase.git/?h=v6.9.2
+https://code.qt.io/cgit/qt/qtwebengine.git/?h=v6.9.2
+QtWebEngine includes Chromium and associated third-party software. Its upstream
+source tree includes third-party licenses and attribution records.
+
+The accompanying LGPL-3.0-only, GPL-3.0-only and Qt-GPL-exception-1.0 texts
+are reproduced from Qt's qtbase v6.9.2 LICENSES directory; license wording is unchanged.
+PyInstaller's bootloader exception applies to the built executable; its notices
+are retained from the build environment. e-Chatter application source is MIT.

@@ -200,6 +200,8 @@ def test_demo_cannot_read_added_sources_imports_or_extra_paths(qt_app, tmp_path,
 def test_codex_drains_late_thread_event_before_returning(tmp_path, monkeypatch):
     import io
     from ai_workbench.e_diary.codex import CodexAdapter
+    # This test owns late transport events; capability policy has dedicated tests.
+    monkeypatch.setattr("ai_workbench.e_diary.codex.isolation.exec_command", lambda *a, **k: ["synthetic-codex"])
     class DelayedStream(io.StringIO):
         def __iter__(self):
             time.sleep(.05)

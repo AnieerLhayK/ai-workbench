@@ -4,6 +4,11 @@ Use the installation-owned **experiment-box-cli.cmd** by its full path. It works
 from any current directory while the GUI is closed. Business arguments cannot
 select a config/data root; no global PATH change is needed.
 
+Assistant generation uses the same tool-free policy as e-Diary and e-Chatter,
+while retaining its `exec` transport, image attachments and structured proposals.
+Unsupported isolation blocks generation. This does not change the separate
+native approval and verified sandbox required for executing an experiment.
+
 ```text
 experiment-box-cli list
 experiment-box-cli show <trial-id>

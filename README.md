@@ -178,3 +178,7 @@ installable releases and Pi integration remain future work. Claude Remote Contro
 is not included. When Pi applications
 are actually added, their docs and this README must credit the upstream repository,
 explain the use and identify dependency licenses. No Pi application is included yet.
+
+## e-Chatter
+
+The independent Windows character chat application uses your own Codex login and local characters. See [e-Chatter](docs/e-chatter.md) for portable startup, source build and read-only revision boundaries.
