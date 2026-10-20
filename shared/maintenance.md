@@ -136,3 +136,24 @@ configuration. An empty MCP map does not prove isolation. Before any model threa
 read effective settings, disable each discovered MCP entry, restart and verify
 all entries disabled along with execution features. Keep provider diagnostics
 limited to safe categories, never raw account/configuration dumps.
+
+## e-Chatter provider seam
+
+The Provider Module is the sole generation/connection Interface for e-Chatter.
+Keep Codex and DeepSeek transport, authentication, capability discovery and
+cancellation in their Adapters. Settings selects the global Agent; model/effort
+preferences belong to a conversation and Agent, while engineering tasks snapshot
+execution configuration. No Adapter may widen the application's file authority.
+DeepSeek's fresh runtime composition and tool guard must pass before admitting
+materials; a protocol/version mismatch is a blocker, never an automatic fallback.
+Account/Key changes are control-plane actions, never model tools. Keep secrets and
+local disclosure confirmations out of migrations. Qualify both real authentication
+modes separately from demo/fixture tests and retain unsupported-version evidence.
+
+e-Chatter's character-system copy is a managed immutable snapshot, not a second
+development tree. Follow docs/e-chatter-promotion.md: export committed blobs,
+test independently, stage before activation and retain one artifact/hash for
+both release channels. Never promote an unverified candidate as stable or
+modify source while freezing a version. Keep native fixtures independent of
+the workbench application's imports. A source build does not update an installed
+shortcut: verify its actual target and packaged source/resources at delivery.

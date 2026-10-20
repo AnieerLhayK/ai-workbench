@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "files": {
+    "LICENSE": "LICENSE",
+    "src/ai_workbench/codex_isolation.py": "src/ai_workbench/codex_isolation.py",
+    "scripts/build_e_chatter.py": "scripts/build_e_chatter.py",
+    "scripts/launch_e_chatter.py": "scripts/launch_e_chatter.py",
+    "docs/e-chatter.md": "docs/e-chatter.md",
+    "frontend/e-chatter/package.json": "frontend/e-chatter/package.json",
+    "frontend/e-chatter/package-lock.json": "frontend/e-chatter/package-lock.json",
+    "frontend/e-chatter/index.html": "frontend/e-chatter/index.html",
+    "frontend/e-chatter/tsconfig.json": "frontend/e-chatter/tsconfig.json",
+    "frontend/e-chatter/vite.config.ts": "frontend/e-chatter/vite.config.ts",
+    "tests/test_e_chatter.py": "tests/test_e_chatter.py",
+    "tests/test_e_chatter_providers.py": "tests/test_e_chatter_providers.py",
+    "tests/test_e_chatter_harness.py": "tests/test_e_chatter_harness.py",
+    "tests/test_e_chatter_qt.py": "tests/test_e_chatter_qt.py",
+    "distribution/e-chatter/pyproject.toml": "pyproject.toml",
+    "distribution/e-chatter/AGENTS.md": "AGENTS.md",
+    "distribution/e-chatter/.gitignore": ".gitignore",
+    "distribution/e-chatter/conftest.py": "tests/conftest.py",
+    "distribution/e-chatter/namespace.py": "src/ai_workbench/__init__.py",
+    "distribution/e-chatter/release-verification.md": "docs/release-verification.md",
+    "distribution/e-chatter/README.md.in": "README.md",
+    "distribution/e-chatter/README.zh-CN.md.in": "README.zh-CN.md"
+  },
+  "trees": {
+    "src/ai_workbench/e_chatter": "src/ai_workbench/e_chatter",
+    "frontend/e-chatter/src": "frontend/e-chatter/src",
+    "docs/e-chatter-licenses": "docs/e-chatter-licenses"
+  },
+  "excluded_parts": [
+    "web",
+    "__pycache__",
+    "node_modules"
+  ],
+  "forbidden_suffixes": [
+    ".pyc",
+    ".db",
+    ".sqlite",
+    ".log",
+    ".zip"
+  ],
+  "generated_tree": "src/ai_workbench/e_chatter/web"
+}

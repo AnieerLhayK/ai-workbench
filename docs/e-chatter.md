@@ -1,14 +1,14 @@
 # e-Chatter v1
 
 e-Chatter is a local Windows character chat, diagnosis and revision application.
-It ships no personal characters. Each person uses their own Codex installation,
-official login and local library. There is no application account or cloud sync.
+It ships no personal characters. Each person uses their own Codex or supported DeepSeek Harness installation,
+authentication and local library. There is no application account or cloud sync.
 
 ## Run
 
 Extract the Windows x64 portable ZIP and open `e-Chatter.exe`. Python and Node
-are included or unnecessary at runtime; install Codex separately. In Settings,
-select an existing Codex executable if it is not on PATH, then connect/login.
+are included or unnecessary at runtime; install the selected Agent separately. In Settings,
+select a supported local executable if necessary, then connect/login.
 Use the character manager to import a character folder containing `SKILL.md`,
 confirm its type and choose developing/runtime. New sessions start without a role.
 
@@ -17,6 +17,47 @@ host can pass an explicitly approved external directory with `--data`. Changing 
 directory does not move or delete the old directory. Themes persist in Settings.
 `--demo` uses synthetic memory-only examples and never loads the real library.
 
+## Agent connections and Models
+
+The bottom-left connection status opens Settings. Agent selection is global and
+changes only future requests. Complete or cancel running jobs and unfinished
+engineering tasks before switching. Normal chat has no Agent-switch shortcut.
+The Models button selects a model and supported reasoning effort for the current
+conversation; each conversation remembers a separate selection for each Agent.
+A missing model or unsupported effort blocks submission rather than falling back.
+Generator and Maintainer confirmations can override model/effort for that task;
+the task keeps its selection until completion or cancellation. Doctor defaults to the
+current conversation selection; a reply's diagnosis-settings action can override
+the model/effort for that diagnosis only. Replies and diagnostics record execution identity;
+old messages do not acquire invented model metadata.
+
+Codex uses official app-server account/model interfaces and preserves its shared
+isolation checks. DeepSeek currently qualifies the official Windows Desktop
+`0.2.1-rc.2` bundled command runtime. Choose `DeepSeek Harness.exe` or its installed
+`resources/runtime/cli/bin/dsh.cmd`; retired pilot wrappers are rejected. Other
+runtime versions stop before material submission until qualified. Nothing installs
+or changes independent Harness Desktop plugins or data.
+
+DeepSeek has its own home under this application's `providers/deepseek` directory.
+Official browser sign-in and API Key are separate selectable modes, with no
+implicit fallback. Credentials stay in the official Harness credential provider,
+not SQLite, prompts, UI snapshots, or migration packages. Saved Keys are not read
+back to the interface. Account sign-out and Key clearing require explicit review.
+Valid saved authorization is reused on switching/restart. The browser-login URL
+arrives asynchronously; the app opens it once and polls initialization, browser
+waiting, exchange and completion. Cancelling prevents late success.
+
+The application-owned Harness bridge exposes only authentication, model metadata,
+isolation inspection and the SDK prompt lifecycle. Its HTTP listener binds
+loopback for the official callback only; the control plane is private stdio.
+Every process uses a fresh profile with a version-qualified template roster,
+no shell/file/MCP/host-skill/subagent tools, and a monotonic tool-execution denial.
+Preflight checks the effective empty tool roster before materials are admitted.
+Each generation has a dedicated process so cancellation cannot interrupt another
+conversation. Original files remain under the existing read-only/staging contract.
+The first send to a new Agent provider for a conversation asks for confirmation
+before sharing its relevant history, role resources and attached materials.
+
 ## Chat and revisions
 
 Generator and Maintainer require confirmation. Their conversations are separate
@@ -24,6 +65,11 @@ engineering tasks; finish or cancel to return to role chat. Doctor diagnoses the
 latest character response, or a response selected from its message action.
 Diagnostics record the exact character version and can supply a maintenance
 handoff. Saving an adjusted version does not establish that its behavior improved.
+Doctor normally returns evidence, likely cause, maintenance scope and a trial;
+specific replacement wording is opt-in. Maintainer can also start from a direct
+maintenance request without a Doctor packet, using the supplied character
+version and relevant evidence. Missing material evidence produces a focused
+request or deferral rather than a speculative change.
 For an explicitly provisional evaluation without a confirmed character response,
 type `@doctor --provisional <text>`. Its saved record is permanently marked as
 unconfirmed and cannot establish a character version's runtime behavior.
@@ -41,7 +87,7 @@ whole; split the original and import again. The application never truncates or
 registers a partially read attachment. DTD/custom entity declarations are rejected
 before XML tree parsing, including declarations in UTF-16 documents.
 
-Generation uses the package's shared Codex isolation policy. Tool-free model
+Codex generation uses the package's shared Codex isolation policy. Tool-free model
 catalogs and disabled execution/integration features are required. The desktop
 app-server verifies effective feature/MCP settings before a model thread starts;
 unsupported or ineffective isolation blocks generation. Official authentication
@@ -50,7 +96,7 @@ remains in Codex, and the application does not modify the user's Codex settings.
 Export/import in Settings migrates sessions, folders, character versions,
 diagnostics, handoffs and committed documents. Preview precedes import; imported
 IDs are remapped without overwriting existing entries. Credentials, staging and
-external source corpora are excluded. Libraries do not follow Codex account changes.
+external source corpora are excluded. Libraries do not follow Agent account changes.
 
 ## Build and verification
 
@@ -62,7 +108,7 @@ Its in-memory provider is not evidence of actual Codex readiness.
 Install PyInstaller 6.22.3 into a dedicated build environment and run
 `python scripts/build_e_chatter.py --staging <external-build-dir> --output <external-release-dir>`.
 The builder bundles QtWebEngine, the built frontend and application-adapted
-engineering resources. It does not bundle Codex or any imported character.
+engineering resources. It does not bundle Codex, DeepSeek Harness or any imported character.
 Retain all Qt and other third-party license files with the portable directory.
 
 Run `python -B -m pytest -q -p no:cacheprovider --basetemp <external-test-dir>`.
@@ -80,9 +126,9 @@ assert the actual DOM/bridge outcomes and process result, and inspect the window
 ## Ownership
 
 `Service` owns application authority and SQLite metadata; `files` owns bounded
-copying; `migration` owns archive validation; `Codex` owns isolated stdio transport;
-`Bridge` routes tagged requests/events; React owns presentation only. No HTTP
-server is started by the desktop application. Codex threads are ephemeral model
+copying; `migration` owns archive validation; the Provider Module owns isolated Agent transports;
+`Bridge` routes tagged requests/events; React owns presentation only. No public HTTP
+server is started. DeepSeek sign-in uses a callback-only loopback listener. Codex threads are ephemeral model
 contexts; durable application sessions keep the recoverable visible conversation.
 
 The `resources/policy.md` file defines host boundaries. The three adapted skill
@@ -90,3 +136,6 @@ copies only define their own workflows. `engineering-source.json` records upstre
 provenance; no character-system installation is required. The generator child is
 a fixed packaged entry point, and all its corpus inputs/templates/output are
 redirected into that task's staging directory before execution.
+Each provider loads the application policy and the selected role's SKILL.md only.
+Keep these three adapters self-contained; Workspace record procedures and
+filesystem references belong to the upstream skills, not the runtime prompt.

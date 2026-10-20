@@ -29,6 +29,6 @@ export function Sidebar(p: Props) {
       {!p.snapshot.sessions.length && <p className="sidebar-empty">从新建会话开始</p>}
     </nav>
     <div className="sidebar-bottom"><button className={`nav-link ${p.page === 'registry' ? 'selected' : ''}`} onClick={() => p.navigate('registry')}><UserRound size={25}/>Skills 与角色</button><button className={`nav-link ${p.page === 'settings' ? 'selected' : ''}`} onClick={() => p.navigate('settings')}><Settings size={25}/>设置</button></div>
-    <button className="account" onClick={() => p.navigate('settings')}><i className={`connection-dot ${p.account.connected ? 'connected' : ''}`}/><span>{p.snapshot.demo ? '演示模式' : p.account.connected ? '已连接 Codex' : p.account.label}</span><ChevronDown size={17}/></button>
+    <button className="account" onClick={() => p.navigate('settings')}><i className={`connection-dot ${p.account.connected ? 'connected' : ''}`}/><span>{p.snapshot.demo ? '演示模式' : p.account.connected ? `已连接 ${p.account.name || (p.snapshot.settings.agent === 'deepseek' ? 'DeepSeek Harness' : 'Codex')}` : p.account.label}</span><ChevronDown size={17}/></button>
   </aside>;
 }

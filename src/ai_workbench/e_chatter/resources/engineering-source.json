@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "source_package": "character-system",
-  "source_revision": "414a934c4074c98297e0aca441156da9e789b477",
+  "source_revision": "e6da224f94f14db0090c763bf0a94b63de8c03b0",
   "policy": "Read-only snapshot; ai-workbench owns its adapters. No runtime characters, private configs, corpus or reports are copied.",
   "files": [
     {
@@ -192,17 +192,17 @@
     {
       "source": "engineering/generation/character-generator/SKILL.md",
       "adaptation": "resources/skills/generator/SKILL.md",
-      "sha256": "7090484e7f69fd5e804aaf20f783cbb40ea5caa070772471495c65949bed0a1d"
+      "sha256": "cb5f4b3e0a3850048e97aa8d8830abe3faf0edc0f74f3c856a92c73f86e36c8b"
     },
     {
       "source": "engineering/maintenance/character-maintainer/SKILL.md",
       "adaptation": "resources/skills/maintainer/SKILL.md",
-      "sha256": "ce0cb43ddeda128cc2c2b28f0b7e1cebd65b9ce88186011056bee65d5105110d"
+      "sha256": "a40ff3aa68f45891bc137e313dc3fd4249c9126e8762ae7a74713e7fec2414e1"
     },
     {
       "source": "engineering/diagnosis/style-doctor/SKILL.md",
       "adaptation": "resources/skills/doctor/SKILL.md",
-      "sha256": "34b5836894e11a7cb03d2b1169dbdeacb4825c6e751f07e76267e7bc170787e3"
+      "sha256": "a09a84be69d307667edee587ff4db54b7aa487ddde1d40c8e420334145bc28d8"
     }
   ]
 }

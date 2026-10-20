@@ -1,5 +1,5 @@
 /** Explicit browser-only memory demo. Never used by a real desktop connection. */
-import type { AppEvent, Snapshot, Confirmation } from './types';
+import type { AppEvent, Snapshot, Agent, Confirmation } from './types';
 import type { Transport } from './bridge';
 
 export class DemoTransport implements Transport {
@@ -7,7 +7,7 @@ export class DemoTransport implements Transport {
   private confirmations = new Map<string, {session_id: string; role: string}>();
   private cancelled = new Set<string>();
   private state: Snapshot = {
-    demo: true, settings: {theme: 'light', characters_root: '演示模式 / characters'},
+    demo: true, settings: {theme: 'light', characters_root: '演示模式 / characters', agent: 'codex'},
     folders: [{id: 'f1', name: '写作练习', parent: null, collapsed: false}, {id: 'f2', name: '随笔', parent: 'f1', collapsed: false}, {id: 'f3', name: '角色实验', parent: null, collapsed: false}, {id: 'f4', name: '节奏测试', parent: 'f3', collapsed: true}],
     sessions: [{id: 's1', title: '关于一段文字的讨论', folder: 'f2', character_id: 'c1', version: 1, model: null}, {id: 's2', title: '改写练习', folder: 'f2', character_id: null, version: null, model: null}],
     characters: [{id: 'c1', name: '样例角色 A', description: '显式演示中的虚构角色', category: 'developing', version: 1, source: 'demo'}, {id: 'c2', name: '样例角色 B', description: '显式演示中的虚构角色', category: 'runtime', version: 1, source: 'demo'}],
@@ -23,8 +23,11 @@ export class DemoTransport implements Transport {
     const s = this.state;
     const session = s.sessions.find(row => row.id === args.session_id);
     if (method === 'snapshot') return this.snapshot() as T;
-    if (method === 'account.status') return {connected: false, label: '演示模式', models: [{id: 'demo', name: '演示模型', default: true}]} as T;
-    if (method === 'settings.save') { if ('theme' in args) s.settings.theme = args.theme as 'light' | 'dark'; }
+    if (method === 'account.status') {const agent = (args.agent || s.settings.agent || 'codex') as Agent; return {agent, name: agent === 'codex' ? 'Codex' : 'DeepSeek Harness', connected: true, label: '演示连接（不使用真实账号）', models: [{id: 'demo', name: '演示模型 A', default: true, efforts: [{id: 'low', name: '低'}, {id: 'high', name: '高'}]}, {id: 'demo-b', name: '演示模型 B', efforts: []}]} as T;}
+    if (method === 'agent.select') {if (s.tasks.some(t => t.status === 'running' || t.kind !== 'chat' && t.status === 'needs_input')) throw new Error('请先完成或取消正在进行的任务'); s.settings.agent = args.agent as Agent; return {snapshot: this.snapshot(), account: await this.call('account.status')} as T;}
+    if (method === 'models.save') {if (s.tasks.some(t => t.session_id === args.session_id && t.status === 'running')) throw new Error('请先停止当前会话的生成'); if (session) session.model_preferences = {...session.model_preferences, [String(args.agent)]: {model: args.model, effort: args.effort}}; return this.snapshot() as T;}
+    if (method === 'provider.authorize') {if (session) session.authorized_agents = [...(session.authorized_agents || ['codex']), args.agent as Agent]; return this.snapshot() as T;}
+    if (method === 'settings.save') { if ('theme' in args) s.settings.theme = args.theme as 'light' | 'dark'; if ('deepseek_auth' in args) s.settings.deepseek_auth = args.deepseek_auth as 'account' | 'api_key'; }
     else if (method === 'session.save') {
       const row = s.sessions.find(row => row.id === args.record_id);
       if (row) Object.assign(row, {title: args.title, folder: args.folder || null});
@@ -61,7 +64,7 @@ export class DemoTransport implements Transport {
         length += 3; this.emit({type: 'delta', task_id: id, session_id: sid, text: reply.slice(0, length)});
         if (length < reply.length) return;
         clearInterval(timer); s.tasks.find(t => t.id === id)!.status = 'completed';
-        s.messages.push({id: crypto.randomUUID(), session_id: sid, role: 'assistant', text: reply, task_id: role === 'chat' ? null : id, metadata: role === 'chat' ? {character_id: session?.character_id || undefined, version: session?.version || undefined} : {kind: role}});
+        s.messages.push({id: crypto.randomUUID(), session_id: sid, role: 'assistant', text: reply, task_id: role === 'chat' ? null : id, metadata: {...(role === 'chat' ? {character_id: session?.character_id || undefined, version: session?.version || undefined} : {kind: role}), execution: {agent: s.settings.agent || 'codex', model: session?.model_preferences?.[s.settings.agent || 'codex']?.model || 'demo', effort: session?.model_preferences?.[s.settings.agent || 'codex']?.effort}}});
         if (role === 'doctor') s.records.push({id: crypto.randomUUID(), session_id: sid, task_id: id, kind: 'diagnosis', body: '# 演示诊断\n\n可检查语气与叙述节奏。这不是实际模型诊断。'});
         if (role === 'maintainer' || role === 'generator') s.proposals.push({id: crypto.randomUUID(), task_id: id, session_id: sid, kind: role, character_id: session?.character_id || null, base_version: session?.version || null, status: 'pending', changes: {'voice_card.md': {before: '直接说明情绪和态度。\n\n保留原文事实，不补写未经提供的经历。', after: '先保留具体细节，再让情绪从叙述中显现。\n\n保留原文事实，不补写未经提供的经历。'}}});
         this.emit({type: 'done', task_id: id, session_id: sid}); this.update();

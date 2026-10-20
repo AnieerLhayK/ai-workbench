@@ -20,7 +20,8 @@ def test_native_webchannel_diagnosis_and_confirmation(request, tmp_path):
     window = Window(service)
     loaded = []
     loading_errors = []
-    window.page.loadingChanged.connect(lambda info: loading_errors.append((info.errorCode(), info.errorString())))
+    window.page.loadingChanged.connect(lambda info: loading_errors.append((str(info.status()), info.errorCode(), info.errorString())))
+    window.page.renderProcessTerminated.connect(lambda status, code: loading_errors.append((str(status), code)))
     window.view.loadFinished.connect(loaded.append)
     window.show()
 
@@ -44,8 +45,8 @@ def test_native_webchannel_diagnosis_and_confirmation(request, tmp_path):
     try:
         wait_for(lambda: bool(loaded))
         assert loaded[-1], ("built local frontend failed to load", loading_errors)
-        wait_for(lambda: javascript("!!Array.from(document.querySelectorAll('button')).find(x=>x.textContent==='Doctor')"))
-        javascript("Array.from(document.querySelectorAll('button')).find(x=>x.textContent==='Doctor').click()")
+        wait_for(lambda: javascript("!!Array.from(document.querySelectorAll('button')).find(x=>x.textContent==='doctor')"))
+        javascript("Array.from(document.querySelectorAll('button')).find(x=>x.textContent==='doctor').click()")
         wait_for(lambda: len(service.snapshot()["records"]) == 2)
         assert {r["kind"] for r in service.snapshot()["records"]} == {"diagnosis", "handoff"}
         javascript("Array.from(document.querySelectorAll('button')).find(x=>x.textContent==='Generator').click()")
@@ -53,6 +54,12 @@ def test_native_webchannel_diagnosis_and_confirmation(request, tmp_path):
         assert not any(t["kind"] == "generator" for t in service.snapshot()["tasks"])
         javascript("Array.from(document.querySelector('dialog').querySelectorAll('button')).find(x=>x.textContent==='取消').click()")
         wait_for(lambda: javascript("!document.querySelector('dialog[open]')"))
+        javascript("Array.from(document.querySelectorAll('button')).find(x=>x.textContent==='Models').click()")
+        wait_for(lambda: javascript("!!document.querySelector('.models-popover')"))
+        javascript("Array.from(document.querySelectorAll('.models-popover label')).find(x=>x.textContent==='演示模型').querySelector('input').click()")
+        wait_for(lambda: service.store.rows("sessions")[0].get("model_preferences", {}).get("codex", {}).get("model") == "demo")
+        javascript("document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true, cancelable:true}))")
+        wait_for(lambda: javascript("!document.querySelector('.models-popover')"))
     finally:
         window.close()
         QTest.qWait(100)

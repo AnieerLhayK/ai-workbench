@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.venv/
+build/
+dist/
+frontend/e-chatter/node_modules/
+frontend/e-chatter/.vite/
+frontend/e-chatter/coverage/

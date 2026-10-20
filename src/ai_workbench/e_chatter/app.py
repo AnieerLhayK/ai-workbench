@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 import threading
 
-from PySide6.QtCore import QObject, Signal, Slot, QUrl, QTimer
+from PySide6.QtCore import QObject, Signal, Slot, QUrl, QTimer, QLibraryInfo
 from PySide6.QtGui import QDesktopServices, QCloseEvent
 from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow
 from PySide6.QtWebChannel import QWebChannel
@@ -16,7 +16,7 @@ from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngin
 from PySide6.QtWebEngineWidgets import QWebEngineView
 
 from . import VERSION
-from .codex import Codex, DemoCodex
+from .providers import Providers
 from .files import ChatterError, inside, texts
 from .service import Service
 from . import migration
@@ -36,10 +36,12 @@ class Bridge(QObject):
     def __init__(self, service, provider=None, parent=None):
         super().__init__(parent)
         self.service = service
-        self.provider = provider or (DemoCodex() if not service.root else Codex(service.root / "staging/provider", service.store.setting("codex_cli")))
+        self.provider = Providers(service, {"codex": lambda: provider} if provider else None)
         self.jobs = {}
+        self.admission = threading.RLock()
         self.threads = []
         self.closed = False
+        self.opened_auth = set()
         self.open_url.connect(lambda url: QDesktopServices.openUrl(QUrl(url)))
 
     def _emit(self, value):
@@ -49,10 +51,53 @@ class Bridge(QObject):
     def _snapshot(self):
         self._emit({"type": "snapshot", "snapshot": self.service.snapshot()})
 
+    def _account(self, agent=None):
+        value = self.provider.account(agent)
+        attempt = value.get("attempt")
+        if attempt:
+            with self.admission:
+                identity = (value["agent"], attempt["id"])
+                if attempt.get("phase") == "waiting-browser" and attempt.get("authorizeUrl") and identity not in self.opened_auth:
+                    self.opened_auth.add(identity)
+                    self.open_url.emit(attempt["authorizeUrl"])
+            # Authorization URLs are only handed to the system browser, not UI snapshots.
+            value["attempt"] = {k: attempt[k] for k in ("id", "phase") if k in attempt}
+        return value
+
+    def _watch_login(self, agent):
+        def watch():
+            import time
+            deadline = time.monotonic() + 610
+            while not self.closed and time.monotonic() < deadline:
+                time.sleep(.5)
+                try:
+                    value = self._account(agent)
+                    phase = (value.get("attempt") or {}).get("phase")
+                    if phase not in ("initializing", "waiting-browser", "exchanging", "committing"):
+                        return
+                except ChatterError:
+                    return
+        thread = threading.Thread(target=watch, daemon=True)
+        self.threads.append(thread)
+        thread.start()
+
     def _send(self, args):
+        with self.admission:
+            return self._admit(args)
+
+    def _admit(self, args):
+        session = self.service.store.get("sessions", args["session_id"])
+        agent = self.service.store.setting("agent", "codex")
+        if agent not in session.get("authorized_agents", ["codex"]):
+            return {"provider_confirmation_required": True, "agent": agent}
+        pending = args.get("task_id") or next((t["id"] for t in reversed(self.service.store.rows("tasks")) if t["session_id"] == session["id"] and t["kind"] != "chat" and t["status"] == "needs_input"), None)
+        override = self.service.store.get("tasks", pending).get("model_override") if pending else None
+        execution = self.provider.bind(session["id"], pending, override)
         request = self.service.prepare_request(args["session_id"], args["text"], args.get("task_id"), args.get("material_ids", []))
         if "confirmation_required" in request:
             return request
+        request.update(execution=execution, model=execution["model"])
+        self.service.store.update("tasks", request["task_id"], execution=execution)
         cancelled = threading.Event()
         task_id = request["task_id"]
         self.jobs[task_id] = cancelled
@@ -89,12 +134,17 @@ class Bridge(QObject):
             return QFileDialog.getOpenFileName(None, "选择迁移包", "", "ZIP (*.zip)")[0]
         if kind == "skill":
             return QFileDialog.getOpenFileName(None, "临时引用 Skill", "", "Skill (SKILL.md)")[0]
-        if kind == "codex":
-            return QFileDialog.getOpenFileName(None, "选择已有 Codex 入口", "", "Codex (*.exe *.cmd *.ps1)")[0]
+        if kind in ("codex", "deepseek"):
+            return QFileDialog.getOpenFileName(None, "选择已有 Agent 入口", "", "Agent (*.exe *.cmd *.ps1)")[0]
         return QFileDialog.getOpenFileName(None, "选择写作材料", "", "材料 (*.txt *.md *.docx *.json *.yaml *.yml)")[0]
 
     def execute(self, method, args):
         s = self.service
+        if method in ("engineering.start", "doctor.start"):
+            session = s.store.get("sessions", args["session_id"])
+            agent = s.store.setting("agent", "codex")
+            if agent not in session.get("authorized_agents", ["codex"]):
+                return {"provider_confirmation_required": True, "agent": agent}
         if method == "snapshot":
             return s.snapshot()
         if method == "folder.save":
@@ -114,20 +164,39 @@ class Bridge(QObject):
         elif method == "character.view":
             return {"files": texts(s.character_files(args["character_id"], args.get("version")))}
         elif method == "settings.save":
-            if "codex_cli" in args and self.jobs:
-                raise ChatterError("请先停止正在运行的任务，再更改 Codex 入口")
-            result = s.settings(**args)
-            if "codex_cli" in args:
-                self.provider.close()
-                self.provider = Codex(s.root / "staging/provider", args["codex_cli"])
-            return result
+            with self.admission:
+                if any(k in args for k in ("codex_cli", "deepseek_cli", "deepseek_auth")):
+                    if self.jobs or any(t["kind"] != "chat" and t["status"] == "needs_input" for t in s.store.rows("tasks")):
+                        raise ChatterError("请先完成或取消正在进行的任务，再更改连接")
+                    result = s.settings(**args)
+                    for agent in ("codex", "deepseek"):
+                        if agent + "_cli" in args or agent == "deepseek" and "deepseek_auth" in args:
+                            self.provider.invalidate(agent)
+                    return result
+                return s.settings(**args)
+        elif method == "agent.select":
+            with self.admission:
+                if not self.provider.account(args["agent"])["connected"]:
+                    raise ChatterError("请先连接并测试该 Agent")
+                s.select_agent(args["agent"])
+            return {"snapshot": s.snapshot(), "account": self.provider.account()}
+        elif method == "models.save":
+            from .providers import selection
+            selection(self.provider.account(args["agent"])["models"], args)
+            s.models(**args)
+        elif method == "provider.authorize":
+            s.authorize_provider(args["session_id"], args["agent"])
         elif method == "engineering.prepare":
             return s.prepare_engineering(args["session_id"], args["role"])
         elif method == "engineering.start":
             task = s.start_engineering(args["session_id"], args["role"], args["token"])
+            if args.get("model_override"):
+                s.models(args["session_id"], s.store.setting("agent", "codex"), task_id=task["id"], **args["model_override"])
             return self._send({"session_id": args["session_id"], "task_id": task["id"], "text": args.get("text") or ("请开始创建新角色，先询问所需信息。" if args["role"] == "generator" else "请检查当前角色与已有关联记录，确认本次维护范围。"), "material_ids": args.get("material_ids", [])})
         elif method == "doctor.start":
             task = s.doctor(args["session_id"], args.get("message_id"), args.get("feedback", ""))
+            if args.get("model_override"):
+                s.models(args["session_id"], s.store.setting("agent", "codex"), task_id=task["id"], **args["model_override"])
             return self._send({"session_id": args["session_id"], "task_id": task["id"], "text": "请诊断选定角色回复，保存诊断，并在需要维护时提供交接。"})
         elif method == "chat.send":
             return self._send(args)
@@ -146,14 +215,19 @@ class Bridge(QObject):
         elif method == "migration.import":
             return migration.import_package(s, args["token"])
         elif method == "account.status":
-            return self.provider.account()
-        elif method == "account.login":
+            return self._account(args.get("agent"))
+        elif method in ("account.login", "account.auth"):
             if not s.root:
-                raise ChatterError("演示模式不登录账号")
-            result = self.provider.login()
-            if result.get("url"):
+                raise ChatterError("演示模式不操作账号或凭据")
+            with self.admission:
+                if self.jobs:
+                    raise ChatterError("请先停止生成，再更改认证")
+                result = self.provider.authenticate(args.get("agent", s.store.setting("agent", "codex")), args.get("action", "login"), **{k: v for k, v in args.items() if k not in ("agent", "action")})
+            if result.get("url") and args.get("agent", s.store.setting("agent", "codex")) != "deepseek":
                 self.open_url.emit(result["url"])
-            return {"pending": True}
+            if result.get("pending") and args.get("action", "login") == "login" and args.get("agent", s.store.setting("agent", "codex")) == "deepseek":
+                self._watch_login("deepseek")
+            return {k: v for k, v in result.items() if k != "url"}
         elif method == "directory.open":
             if not s.root:
                 raise ChatterError("演示模式不打开本机目录")
@@ -215,7 +289,7 @@ class Page(QWebEnginePage):
 class Window(QMainWindow):
     def __init__(self, service, provider=None, url=None):
         super().__init__()
-        self.setWindowTitle("e-Chatter")
+        self.setWindowTitle(f"e-Chatter {VERSION}")
         self.resize(1440, 960)
         self.setMinimumSize(900, 640)
         self.view = QWebEngineView(self)
@@ -238,6 +312,12 @@ class Window(QMainWindow):
         event.accept()
 
 
+def create_application():
+    # Importing this module initializes QtWebEngine before QApplication exists.
+    platforms = Path(QLibraryInfo.path(QLibraryInfo.LibraryPath.PluginsPath)) / "platforms"
+    return QApplication.instance() or QApplication(["e-Chatter", "-platformpluginpath", str(platforms)])
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="e-Chatter local desktop character platform")
     parser.add_argument("--demo", action="store_true")
@@ -249,7 +329,7 @@ def main(argv=None):
         from .builder import worker
         worker(args.role_worker)
         return 0
-    app = QApplication.instance() or QApplication(["e-Chatter", "-platformpluginpath", str(Path(__import__("PySide6").__file__).parent / "plugins/platforms")])
+    app = create_application()
     app.setApplicationName("e-Chatter")
     app.setApplicationVersion(VERSION)
     service = Service(None if args.demo else (args.data or default_root()))

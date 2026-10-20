@@ -9,6 +9,7 @@ from functools import wraps
 
 from .files import ChatterError, atomic, digest, fingerprint, inside, plain_path, relative, skill_info, texts, tree, uid, write_tree
 from .store import Store, now
+from . import VERSION
 
 
 ROLES = ("generator", "maintainer", "doctor")
@@ -31,6 +32,13 @@ class Service:
         self.confirmations = {}
         self.materials = {}
         self.previews = {}
+        # Upgrade preferences once; never infer old messages' execution metadata.
+        with self.store.transaction():
+            if not self.store.setting("agent"):
+                self.store.put_setting("agent", "codex")
+            for session in self.store.rows("sessions"):
+                if "model_preferences" not in session:
+                    self.store.update("sessions", session["id"], model_preferences={"codex": {"model": session.get("model") or self.store.setting("model"), "effort": None}})
         if self.root:
             plain_path(Path(self.store.setting("characters_root"))).mkdir(parents=True, exist_ok=True)
             for task in self.store.rows("tasks"):
@@ -48,7 +56,7 @@ class Service:
                     self.store.update("tasks", task["id"], status="interrupted", error="任务材料副本缺失或变化，请重新启动工程并附加材料")
 
     def snapshot(self):
-        return self.store.snapshot() | {"demo": self.root is None, "confirmations": CONFIRMATIONS}
+        return self.store.snapshot() | {"demo": self.root is None, "confirmations": CONFIRMATIONS, "app_version": VERSION}
 
     @locked
     def folder(self, name, parent=None, record_id=None, collapsed=None):
@@ -75,11 +83,45 @@ class Service:
         if record_id:
             return self.store.update("sessions", record_id, title=title.strip() or "新会话", folder=folder)
         return self.store.add("sessions", title=title.strip() or "新会话", folder=folder,
-                              character_id=None, version=None, model=None)
+                              character_id=None, version=None, model=None, model_preferences={})
+
+    @locked
+    def models(self, session_id, agent, model=None, effort=None, task_id=None):
+        from .providers import AGENTS
+        if agent not in AGENTS or any(v is not None and (not isinstance(v, str) or not v) for v in (model, effort)):
+            raise ChatterError("模型配置无效")
+        if task_id:
+            task = self.store.get("tasks", task_id)
+            if task["session_id"] != session_id or task["status"] != "needs_input" or task.get("execution"):
+                raise ChatterError("工程任务开始后不能修改模型配置")
+            return self.store.update("tasks", task_id, model_override={"model": model, "effort": effort})
+        session = self.store.get("sessions", session_id)
+        if any(t["session_id"] == session_id and t["status"] == "running" for t in self.store.rows("tasks")):
+            raise ChatterError("请先停止当前会话的生成")
+        preferences = session.get("model_preferences", {}) | {agent: {"model": model, "effort": effort}}
+        return self.store.update("sessions", session_id, model_preferences=preferences)
+
+    @locked
+    def select_agent(self, agent):
+        from .providers import AGENTS
+        if agent not in AGENTS:
+            raise ChatterError("未知 Agent")
+        if any(t["status"] == "running" or (t["kind"] != "chat" and t["status"] == "needs_input") for t in self.store.rows("tasks")):
+            raise ChatterError("请先完成或取消正在进行的生成和工程任务")
+        self.store.put_setting("agent", agent)
+
+    def authorize_provider(self, session_id, agent):
+        from .providers import AGENTS
+        if agent not in AGENTS:
+            raise ChatterError("未知 Agent")
+        session = self.store.get("sessions", session_id)
+        self.store.update("sessions", session_id, authorized_agents=list(dict.fromkeys([*session.get("authorized_agents", ["codex"]), agent])))
 
     def settings(self, **values):
-        if set(values) - {"theme", "characters_root", "model", "codex_cli"}:
+        if set(values) - {"theme", "characters_root", "model", "codex_cli", "deepseek_cli", "deepseek_auth"}:
             raise ChatterError("未知设置")
+        if "deepseek_auth" in values and values["deepseek_auth"] not in ("account", "api_key"):
+            raise ChatterError("未知认证方式")
         if "theme" in values and values["theme"] not in ("light", "dark"):
             raise ChatterError("主题必须为浅色或深色")
         if "characters_root" in values:
@@ -377,9 +419,11 @@ class Service:
         if files and task["kind"] == "generator":
             skill_info(files)
         with self.store.transaction():
+            if "execution" in request:
+                task = self.store.update("tasks", task["id"], execution=deepcopy(request["execution"]))
             self.store.add("messages", session_id=task["session_id"], role="assistant", text=result["reply"],
                            task_id=task["id"] if task["kind"] != "chat" else None,
-                           metadata=request["payload"]["character_context"] if task["kind"] == "chat" else {"kind": task["kind"]})
+                           metadata=(request["payload"]["character_context"] if task["kind"] == "chat" else {"kind": task["kind"]}) | {"execution": request.get("execution", {})})
             if files:
                 self.stage(task, files, base_files)
             for kind in ("diagnosis", "handoff"):
@@ -391,7 +435,7 @@ class Service:
 
     def record(self, task, kind, body):
         record_id = uid()
-        metadata = {"character_id": task.get("character_id"), "version": task.get("version"), "target_message_id": task.get("target_message_id")}
+        metadata = {"character_id": task.get("character_id"), "version": task.get("version"), "target_message_id": task.get("target_message_id"), "execution": task.get("execution", {})}
         if task.get("provisional"):
             metadata["status"] = "provisional"
             body = "> Provisional：角色上下文未经确认；本记录不能证明角色版本的运行表现。\n\n" + body

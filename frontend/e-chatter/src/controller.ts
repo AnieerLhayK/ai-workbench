@@ -4,6 +4,7 @@ import { emptySnapshot, type Snapshot, type Account } from './types';
 
 export function useChatter() {
   const transport = useRef<Transport | null>(null);
+  const activeAgent = useRef('codex');
   const [snapshot, setSnapshot] = useState<Snapshot>(emptySnapshot);
   const [account, setAccount] = useState<Account>({connected: false, label: '连接中…', models: []});
   const [error, setError] = useState('');
@@ -20,8 +21,8 @@ export function useChatter() {
         else setStreams(previous => { const value = {...previous}; delete value[event.task_id]; return value; });
       });
       const state = await client.call<Snapshot>('snapshot');
-      if (!disposed) { setSnapshot(state); setReady(true); }
-      client.call<Account>('account.status').then(value => { if (!disposed) setAccount(value); }).catch(reason => { if (!disposed) {setAccount({connected: false, label: '未连接 Codex', models: []}); setError(reason.message);} });
+      if (!disposed) { activeAgent.current = state.settings.agent || 'codex'; setSnapshot(state); setReady(true); }
+      client.call<Account>('account.status').then(value => { if (!disposed) setAccount(value); }).catch(reason => { if (!disposed) {setAccount({connected: false, label: 'Agent 未连接', models: []}); setError(reason.message);} });
     }).catch(reason => { if (!disposed) setError(reason.message); });
     return () => {disposed = true; unsubscribe?.();};
   }, []);
@@ -33,7 +34,8 @@ export function useChatter() {
       const value = result as {snapshot?: Snapshot; sessions?: unknown};
       if (value?.snapshot) setSnapshot(value.snapshot);
       else if (Array.isArray(value?.sessions)) setSnapshot(result as Snapshot);
-      if (method === 'account.status') setAccount(result as Account);
+      if (method === 'account.status' && (!args.agent || args.agent === activeAgent.current)) setAccount(result as Account);
+      if (method === 'agent.select') {activeAgent.current = String(args.agent); setAccount((result as {account: Account}).account);}
       return result;
     } catch (reason) { setError((reason as Error).message); throw reason; }
   }, []);

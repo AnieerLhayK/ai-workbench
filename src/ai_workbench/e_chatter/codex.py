@@ -12,6 +12,7 @@ import threading
 import time
 
 from .files import ChatterError
+from . import VERSION
 from .. import codex_isolation as isolation
 
 
@@ -59,10 +60,11 @@ def reply_prefix(raw):
 
 
 class Rpc:
-    def __init__(self, command, directory):
+    def __init__(self, command, directory, *, env=None, label="Codex", jsonrpc=False):
+        self.label, self.jsonrpc = label, jsonrpc
         self.process = subprocess.Popen(command, cwd=directory, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                         stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
-                                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), env=env)
         self.lock = threading.RLock()
         self.pending = {}
         self.events = {}
@@ -79,8 +81,8 @@ class Rpc:
     def _send(self, message):
         with self.lock:
             if self.closed or self.process.poll() is not None:
-                raise ChatterError("Codex 连接已关闭")
-            self.process.stdin.write(json.dumps(message, ensure_ascii=False) + "\n")
+                raise ChatterError(f"{self.label} 连接已关闭")
+            self.process.stdin.write(json.dumps(({"jsonrpc": "2.0"} if self.jsonrpc else {}) | message, ensure_ascii=False) + "\n")
             self.process.stdin.flush()
 
     def _read(self):
@@ -95,8 +97,10 @@ class Rpc:
                         # No model-initiated write, permission escalation or external tool can be approved.
                         self._send({"id": message["id"], "error": {"code": -32601, "message": "This application does not expose execution or write tools"}})
                     params = message.get("params") or {}
-                    thread = params.get("threadId") or params.get("thread", {}).get("id")
+                    thread = params.get("threadId") or params.get("sessionId") or params.get("thread", {}).get("id")
                     with self.lock:
+                        if "_all" in self.events:
+                            self.events["_all"].put(message)
                         if thread:
                             self.events.setdefault(thread, queue.Queue()).put(message)
                 else:
@@ -111,7 +115,7 @@ class Rpc:
                 for events in self.events.values():
                     events.put(None)
 
-    def request(self, method, params, timeout=45):
+    def request(self, method, params, timeout=45, cancelled=None):
         with self.lock:
             self.sequence += 1
             request_id = self.sequence
@@ -119,14 +123,32 @@ class Rpc:
         try:
             self._send({"id": request_id, "method": method, "params": params})
             try:
-                message = waiter.get(timeout=timeout)
+                deadline = time.monotonic() + timeout
+                while True:
+                    if cancelled is not None and cancelled.is_set():
+                        raise ChatterError("请求已取消")
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise queue.Empty()
+                    try:
+                        message = waiter.get(timeout=min(.2, remaining))
+                        break
+                    except queue.Empty:
+                        continue
             except queue.Empty as error:
-                raise ChatterError("Codex 请求超时，可重试连接") from error
+                raise ChatterError(f"{self.label} 请求超时，可重试连接") from error
             if message is None:
-                raise ChatterError("Codex 连接提前结束，请检查版本和配置")
+                code = self.process.poll()
+                if code is None:
+                    try:
+                        code = self.process.wait(timeout=.2)
+                    except subprocess.TimeoutExpired:
+                        pass
+                detail = f"（退出码 {code}）" if code is not None else ""
+                raise ChatterError(f"{self.label} 连接提前结束{detail}，请刷新连接后重试")
             if "error" in message:
                 # Protocol error bodies can contain host configuration; don't expose/persist them.
-                raise ChatterError(f"Codex 不支持当前请求：{method}（{message['error'].get('code', 'unknown')}）")
+                raise ChatterError(f"{self.label} 不支持当前请求：{method}（{message['error'].get('code', 'unknown')}）")
             return message["result"]
         finally:
             with self.lock:
@@ -170,7 +192,7 @@ class Codex:
             command += isolation.options(catalog_path)
             rpc = Rpc(command, self.directory)
             try:
-                rpc.request("initialize", {"clientInfo": {"name": "e_chatter", "title": "e-Chatter", "version": "0.1.0"}})
+                rpc.request("initialize", {"clientInfo": {"name": "e_chatter", "title": "e-Chatter", "version": VERSION}})
                 rpc._send({"method": "initialized", "params": {}})
                 config = rpc.request("config/read", {"includeLayers": False})["config"]
                 overrides = isolation.mcp_overrides(config)
@@ -178,12 +200,20 @@ class Codex:
                     rpc.close()
                     command += overrides
                     rpc = Rpc(command, self.directory)
-                    rpc.request("initialize", {"clientInfo": {"name": "e_chatter", "title": "e-Chatter", "version": "0.1.0"}})
+                    rpc.request("initialize", {"clientInfo": {"name": "e_chatter", "title": "e-Chatter", "version": VERSION}})
                     rpc._send({"method": "initialized", "params": {}})
                     config = rpc.request("config/read", {"includeLayers": False})["config"]
                 isolation.verify_config(config)
-                models = rpc.request("model/list", {})
-                self.models = [{"id": m["id"], "name": m.get("displayName", m["id"]), "default": m.get("isDefault", False)} for m in models.get("data", [])]
+                self.models = []
+                cursor = None
+                while True:
+                    models = rpc.request("model/list", {"cursor": cursor} if cursor else {})
+                    self.models += [{"id": m["id"], "name": m.get("displayName", m["id"]), "default": m.get("isDefault", False),
+                                     "efforts": [{"id": e["reasoningEffort"], "name": e.get("description") or e["reasoningEffort"]} for e in m.get("supportedReasoningEfforts", [])],
+                                     "default_effort": m.get("defaultReasoningEffort")} for m in models.get("data", [])]
+                    cursor = models.get("nextCursor")
+                    if not cursor:
+                        break
             except isolation.IsolationError as error:
                 rpc.close()
                 raise ChatterError(str(error)) from error
@@ -202,6 +232,17 @@ class Codex:
         result = self.connect().request("account/login/start", {"type": "chatgpt"})
         return {"url": result.get("authUrl"), "login_id": result.get("loginId")}
 
+    def authenticate(self, action, **values):
+        if action == "login":
+            return self.login()
+        if action == "logout":
+            self.connect().request("account/logout", {})
+            return {"pending": False}
+        if action == "cancel" and values.get("login_id"):
+            self.connect().request("account/login/cancel", {"loginId": values["login_id"]})
+            return {"pending": False}
+        raise ChatterError("当前 Codex 不支持该认证操作")
+
     def generate(self, request, cancelled, emit):
         rpc = self.connect()
         policy_root = Path(__file__).with_name("resources")
@@ -213,9 +254,15 @@ class Codex:
                                              "approvalPolicy": "never", "model": request.get("model"),
                                              "baseInstructions": policy, "developerInstructions": policy})
         thread_id = result["thread"]["id"]
+        if request.get("execution") is not None:
+            actual = result.get("model") or result["thread"].get("model")
+            if actual:
+                request["execution"]["actual_model"] = actual
+            # Thread defaults do not describe the later turn's explicit effort.
         with rpc.lock:
             events = rpc.events.setdefault(thread_id, queue.Queue())
         turn = rpc.request("turn/start", {"threadId": thread_id,
+                                         "effort": request.get("execution", {}).get("effort"),
                                          "input": [{"type": "text", "text": json.dumps(request["payload"], ensure_ascii=False)}],
                                          "outputSchema": SCHEMA})["turn"]
         chunks, final = {}, ""
@@ -273,8 +320,14 @@ class Codex:
 
 
 class DemoCodex:
+    def __init__(self, agent="codex"):
+        self.agent = agent
+
     def account(self):
-        return {"connected": False, "label": "演示模式", "models": [{"id": "demo", "name": "演示模型", "default": True}]}
+        return {"connected": True, "label": "演示模式", "models": [{"id": "demo", "name": "演示模型", "default": True, "efforts": [{"id": "low", "name": "低"}, {"id": "high", "name": "高"}]}]}
+
+    def authenticate(self, action, **values):
+        raise ChatterError("演示模式不操作账号或凭据")
 
     def generate(self, request, cancelled, emit):
         role = request["payload"]["role"]

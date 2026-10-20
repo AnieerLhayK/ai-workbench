@@ -20,6 +20,8 @@ def export_package(service, destination):
     payload["proposals"] = [p for p in payload["proposals"] if p["status"] == "accepted"]
     for character in payload["characters"]:
         character["source"] = "迁移包"
+    for session in payload["sessions"]:
+        session.pop("authorized_agents", None)
     buffer = BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         for version in payload["versions"]:
@@ -131,6 +133,9 @@ def import_package(service, token):
         for kind in TABLES:
             for old in data[kind]:
                 row = remap(old)
+                if kind == "sessions":
+                    row.pop("authorized_agents", None)
+                    row.setdefault("model_preferences", {"codex": {"model": row.get("model") or data.get("settings", {}).get("model"), "effort": None}})
                 if kind == "versions":
                     prefix = f"characters/{old['character_id']}/{old['id']}/"
                     contents = {name[len(prefix):]: value for name, value in files.items() if name.startswith(prefix)}

@@ -1,12 +1,14 @@
 """Build a self-contained Windows directory; all build scratch stays external."""
 import argparse
 import importlib.metadata
+import hashlib
 import json
 import os
 from pathlib import Path
 import subprocess
 import sys
 import types
+import runpy
 import zipfile
 
 
@@ -24,6 +26,12 @@ def main():
     web = package / "src/ai_workbench/e_chatter/web"
     if not (web / "index.html").is_file():
         parser.error("run npm ci and npm run build in frontend/e-chatter first")
+    version = runpy.run_path(str(web.parent / "__init__.py"))["VERSION"]
+    frontend_version = json.loads((package / "frontend/e-chatter/package.json").read_text(encoding="utf-8"))["version"]
+    if version != frontend_version:
+        parser.error("application/frontend versions differ")
+    inputs = [p for folder in (web, web.parent / "resources") for p in folder.rglob("*") if p.is_file()]
+    hashes = {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs}
     staging.mkdir(parents=True, exist_ok=True)
     output.mkdir(parents=True, exist_ok=True)
     environment = os.environ | {"PYINSTALLER_CONFIG_DIR": str(staging / "cache")}
@@ -43,12 +51,17 @@ def main():
         return (code.co_code, code.co_names, code.co_varnames,
                 tuple(code_shape(value) if isinstance(value, types.CodeType) else value for value in code.co_consts))
     modules = ["ai_workbench.codex_isolation", *(
-        "ai_workbench.e_chatter." + name for name in ("app", "builder", "codex", "files", "migration", "service", "store"))]
+        "ai_workbench.e_chatter." + name for name in ("app", "builder", "codex", "providers", "deepseek", "harness_archive", "files", "migration", "service", "store"))]
     for module in modules:
         source = package / "src" / (module.replace(".", "/") + ".py")
         expected = compile(source.read_text(encoding="utf-8"), str(source), "exec")
         if code_shape(archive.extract(module)) != code_shape(expected):
             raise RuntimeError("Frozen module differs from current source: " + module)
+    for source, expected in hashes.items():
+        frozen = release / "_internal" / "ai_workbench/e_chatter" / source.relative_to(web.parent)
+        if hashlib.sha256(source.read_bytes()).hexdigest() != expected or not frozen.is_file() or hashlib.sha256(frozen.read_bytes()).hexdigest() != expected:
+            raise RuntimeError("Packaged resource differs from build input: " + str(source.relative_to(package)))
+    (release / "BUILD.json").write_text(json.dumps({"version": version, "platform": "windows-x64", "resources": {str(p.relative_to(web.parent)).replace("\\", "/"): value for p, value in hashes.items()}}, indent=2) + "\n", encoding="utf-8")
     for name in ("LICENSE",):
         (release / name).write_bytes((package / name).read_bytes())
     (release / "README.md").write_bytes((package / "docs/e-chatter.md").read_bytes())

@@ -78,3 +78,33 @@ existing Codex authentication. e-Chatter also saved a diagnosis tied to the
 synthetic role response. These checks establish compatibility with the tested
 CLI, not every Codex version or every future integration. No connected-service
 write, real corpus or credential export was used.
+
+## Multi-Agent desktop follow-up (2026-10-19)
+
+The official DeepSeek account login completed in the dedicated application
+credential store. Four independent status reads returned connected with both
+advertised models. A real account-backed deepseek-flash request with reasoning
+off returned the synthetic reply “连接测试通过。” with 37 stream updates and
+matching actual model/effort metadata. No character corpus was submitted.
+The earlier connection-ended notification did not reproduce in these checks;
+its originating cause is not confirmed.
+
+The official Harness runtime also passed three controlled local-endpoint tests:
+streaming completion, cancellation and tool-event rejection. These tests use a
+synthetic Key and do not establish real API Key service acceptance. Nine provider
+checks, 33 existing application checks, three frontend checks and the native Qt
+WebChannel check passed on the final desktop source candidate.
+
+The previous desktop shortcut still targeted the old Codex-only portable build.
+The multi-Agent bundle is built separately under agents-20261019; the shortcut
+must be updated only after frozen-module/resource consistency and executable
+startup checks pass. Existing data and the previous release remain in place.
+Real API Key service acceptance and clean-machine acceptance remain outstanding.
+
+Desktop delivery completed: the agents-20261019 portable build passed frozen
+module checks, 47 web/resource hash comparisons, restricted-PATH demo startup
+(exit 0), and ZIP integrity. The desktop shortcut now targets that build and
+retains the canonical local data argument. Full package regression: 279 passed,
+4 opt-in tests skipped; native WebChannel passed separately. Existing old
+windows are not automatically replaced and must be closed before reopening.
+This local trial delivery does not establish remote source publication.

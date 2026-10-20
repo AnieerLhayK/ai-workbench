@@ -188,6 +188,27 @@
     "frontend/e-chatter/src/demo.test.ts",
     "tests/test_e_chatter_qt.py",
     "docs/e-chatter-licenses/NOTICE.txt",
-    "docs/e-chatter-acceptance.md"
+    "docs/e-chatter-acceptance.md",
+    "frontend/e-chatter/src/Models.tsx",
+    "src/ai_workbench/e_chatter/providers.py",
+    "src/ai_workbench/e_chatter/deepseek.py",
+    "src/ai_workbench/e_chatter/harness_archive.py",
+    "src/ai_workbench/e_chatter/resources/harness-bridge.mjs",
+    "tests/test_e_chatter_providers.py",
+    "docs/e-chatter-design/models.png",
+    "docs/e-chatter-design/agent-settings.png",
+    "tests/test_e_chatter_harness.py",
+    "scripts/promote_e_chatter.py",
+    "tests/test_e_chatter_promotion.py",
+    "docs/e-chatter-promotion.md",
+    "distribution/e-chatter/.gitignore",
+    "distribution/e-chatter/AGENTS.md",
+    "distribution/e-chatter/conftest.py",
+    "distribution/e-chatter/contract.json",
+    "distribution/e-chatter/namespace.py",
+    "distribution/e-chatter/pyproject.toml",
+    "distribution/e-chatter/README.md.in",
+    "distribution/e-chatter/README.zh-CN.md.in",
+    "distribution/e-chatter/release-verification.md"
   ]
 }
