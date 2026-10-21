@@ -44,7 +44,8 @@ class Settings:
 def style_resources(config, use_zf=False):
     """Read live resources for each job; fingerprints audit the inputs, not pin them."""
     from .library import digest
-    paths = [Path(config.get("prose_path", ""))]
+    prose = config.get("prose_path", "").strip()
+    paths = [Path(prose) if prose else Path(__file__).with_name("prose.md")]
     if use_zf:
         root = Path(config.get("zf_root", ""))
         paths += [root / "SKILL.md", *[root / "references" / name for name in

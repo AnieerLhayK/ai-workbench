@@ -1,5 +1,5 @@
 """Native application shell; composition glue for the diary's deep Modules."""
-from datetime import date, datetime, timedelta
+from datetime import date
 
 from PySide6.QtCore import QEvent, QSize, Qt, QTimer, QRect
 from PySide6.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QLabel,
@@ -9,7 +9,7 @@ from PySide6.QtGui import QGuiApplication, QFont, QColor
 
 from .editor import Editor
 from .library import DiaryError, KINDS, period_label
-from .pages import Preferences, CyclePage, SourcePage, ReportPage, heading, period_request
+from .pages import Preferences, CyclePage, CycleStatus, SourcePage, ReportPage, heading, period_request
 from .style import stylesheet, icon, is_dark
 from ..app import PALETTES
 
@@ -90,8 +90,16 @@ class DiaryWindow(QMainWindow):
             nav.addWidget(button)
             self.navigation[key] = button
         layout.addWidget(self.rail)
+        content = QVBoxLayout()
+        content.setSpacing(0)
+        self.cycle_status = CycleStatus(cycles, jobs)
+        self.cycle_status.open_requested.connect(self.open_cycle_report)
+        self.cycle_status.retry_requested.connect(self.retry_cycle)
+        self.cycle_status.setVisible(not config.get("demo"))
+        content.addWidget(self.cycle_status)
         self.pages = QStackedWidget()
-        layout.addWidget(self.pages, 1)
+        content.addWidget(self.pages, 1)
+        layout.addLayout(content, 1)
         self.diary_page = QWidget()
         diary_layout = QVBoxLayout(self.diary_page)
         diary_layout.setContentsMargins(0, 0, 0, 0)
@@ -143,6 +151,8 @@ class DiaryWindow(QMainWindow):
         self.pages.addWidget(self.diary_page)
         self.source_page = SourcePage(settings, sources)
         self.cycle_page = CyclePage(settings, cycles, jobs)
+        self.cycle_page.retry_requested.connect(self.retry_cycle)
+        self.cycle_page.settings_changed.connect(self.check_cycles)
         self.report_page = ReportPage(reports, settings, jobs)
         self.preferences = Preferences(settings, config, self.apply_theme)
         self.extra_pages = {"sources": self.source_page, "cycles": self.cycle_page,
@@ -156,6 +166,7 @@ class DiaryWindow(QMainWindow):
         self.cycle_timer.start()
         jobs.observe(self.job_changed)
         self.navigate("diary")
+        QTimer.singleShot(0, self.check_cycles)
 
     def apply_theme(self, theme):
         if self.settings.data["theme"] != theme:
@@ -260,11 +271,42 @@ class DiaryWindow(QMainWindow):
             self.global_status.setText(str(error))
 
     def check_cycles(self):
+        self.cycle_status.refresh()
+        self.cycle_page.refresh()
         if self.jobs.state["pending"] or self.config.get("demo") or self.closing:
             return
         request = self.cycles.due()
         if request:
             self.submit(request)
+
+    def retry_cycle(self, kind):
+        if self.jobs.state["pending"] or self.closing or self.config.get("demo"):
+            return
+        request = self.cycles.retry(kind)
+        if request:
+            self.submit(request)
+
+    def open_cycle_report(self, entry_id):
+        if not self.editor.save():
+            return
+        try:
+            record = self.library.read(entry_id)
+            if record.get("deleted"):
+                raise DiaryError("这份报告已移入回收站")
+        except (DiaryError, OSError, KeyError) as error:
+            QMessageBox.warning(self, "无法打开报告", str(error))
+            return
+        self.search.blockSignals(True)
+        self.month.blockSignals(True)
+        self.search.clear()
+        self.month.setCurrentIndex(0)
+        self.search.blockSignals(False)
+        self.month.blockSignals(False)
+        self.navigate(record["kind"])
+        for row in range(self.list.count()):
+            if self.list.item(row).data(Qt.UserRole) == entry_id:
+                self.select_entry(self.list.item(row))
+                break
 
     def job_changed(self, state):
         self.global_status.setText(state["stage"] + ("：" + state["error"] if state.get("error") else ""))
@@ -273,6 +315,8 @@ class DiaryWindow(QMainWindow):
             self.refresh_list()
             if self.closing:
                 QTimer.singleShot(0, self.close)
+            elif state.get("request"):
+                QTimer.singleShot(0, self.check_cycles)
 
     def changeEvent(self, event):
         super().changeEvent(event)
@@ -288,8 +332,8 @@ class DiaryWindow(QMainWindow):
         if not self.editor.save():
             event.ignore()
             return
+        self.closing = True
         if self.jobs.state["pending"]:
-            self.closing = True
             self.jobs.cancel()
             event.ignore()
             return

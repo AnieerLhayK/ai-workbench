@@ -3,13 +3,15 @@ param(
     [Parameter(Mandatory)][string]$DesktopRoot,
     [Parameter(Mandatory)][string]$Pythonw,
     [Parameter(Mandatory)][string]$CodexCli,
-    [Parameter(Mandatory)][string]$ProsePath,
+    [string]$ProsePath = "",
     [Parameter(Mandatory)][string]$ZfRoot,
     [Parameter(Mandatory)][string]$StagingRoot,
     [Parameter(Mandatory)][string[]]$SourceRoots
 )
 $ErrorActionPreference = 'Stop'
-foreach ($file in @($Pythonw, $CodexCli, $ProsePath)) {
+$requiredFiles = @($Pythonw, $CodexCli)
+if ($ProsePath) { $requiredFiles += $ProsePath }
+foreach ($file in $requiredFiles) {
     if (-not [IO.Path]::IsPathRooted($file) -or -not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "Missing file: $file" }
 }
 foreach ($directory in @($DataRoot, $DesktopRoot, $ZfRoot, $StagingRoot) + $SourceRoots) {

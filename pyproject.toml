@@ -23,6 +23,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 ai_workbench = ["assets/*.svg", "assets/*.ico"]
+"ai_workbench.e_diary" = ["prose.md"]
 "ai_workbench.experiment_box" = ["*.md"]
 "ai_workbench.e_chatter" = ["resources/**/*", "web/**/*", "web/*"]
 

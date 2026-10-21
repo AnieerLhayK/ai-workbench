@@ -209,6 +209,7 @@
     "distribution/e-chatter/pyproject.toml",
     "distribution/e-chatter/README.md.in",
     "distribution/e-chatter/README.zh-CN.md.in",
-    "distribution/e-chatter/release-verification.md"
+    "distribution/e-chatter/release-verification.md",
+    "src/ai_workbench/e_diary/prose.md"
   ]
 }

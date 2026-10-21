@@ -1,15 +1,15 @@
 """Settings, registry and report UI families; no model work on the GUI thread."""
 from copy import deepcopy
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
-from PySide6.QtCore import QDate, Qt, QUrl, QTime
+from PySide6.QtCore import QDate, Qt, QUrl, QTime, Signal
 from PySide6.QtGui import QDesktopServices, QPixmap
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel,
     QPushButton, QComboBox, QLineEdit, QSpinBox, QCheckBox, QFileDialog, QTextEdit,
     QTextBrowser, QListWidget, QTabWidget, QDialog, QDialogButtonBox, QMessageBox,
-    QTableWidget, QTableWidgetItem, QHeaderView, QDateEdit, QSplitter, QStackedWidget, QTimeEdit, QAbstractItemView)
+    QTableWidget, QTableWidgetItem, QHeaderView, QDateEdit, QSplitter, QStackedWidget, QTimeEdit, QAbstractItemView, QScrollArea)
 from PySide6.QtPdf import QPdfDocument
 from PySide6.QtPdfWidgets import QPdfView
 
@@ -71,9 +71,11 @@ class Preferences(QWidget):
         self.theme.currentIndexChanged.connect(lambda: on_theme(self.theme.currentData()))
         form.addRow("外观", self.theme)
         self.fields = {}
-        for key, label in (("codex_cli", "Codex CLI"), ("prose_path", "prose.md"), ("zf_root", "zf skill 目录"),
+        for key, label in (("codex_cli", "Codex CLI"), ("prose_path", "prose.md（留空使用内置规范）"), ("zf_root", "zf skill 目录"),
                            ("staging_root", "临时任务目录"), ("model", "模型（留空沿用 Codex）")):
             field = QLineEdit(str(config.get(key, "")))
+            if key == "prose_path":
+                field.setPlaceholderText("内置 prose.md；可填写自定义文件的绝对路径")
             self.fields[key] = field
             form.addRow(label, field)
         self.read_sessions = QCheckBox("读取本机 Codex 历史（只读，不恢复原会话）")
@@ -83,7 +85,7 @@ class Preferences(QWidget):
         save = QPushButton("保存运行设置")
         save.clicked.connect(self.save)
         layout.addWidget(save)
-        self.message = QLabel("写作资源在每次生成时重新读取；不会复制为固定版本。")
+        self.message = QLabel("默认使用随软件附带的 prose 规范；自定义 prose 和 zf 资源每次生成时重新读取。")
         self.message.setWordWrap(True)
         layout.addWidget(self.message)
         layout.addStretch()
@@ -91,7 +93,10 @@ class Preferences(QWidget):
     def save(self):
         runtime = {k: w.text().strip() for k, w in self.fields.items()}
         runtime["read_codex"] = self.read_sessions.isChecked()
-        for key in ("codex_cli", "prose_path", "zf_root", "staging_root"):
+        if runtime["prose_path"] and not Path(runtime["prose_path"]).is_absolute():
+            self.message.setText("自定义 prose_path 必须为绝对路径；留空使用内置规范")
+            return
+        for key in ("codex_cli", "zf_root", "staging_root"):
             if not runtime[key] or not Path(runtime[key]).is_absolute():
                 self.message.setText(f"{key} 必须为绝对路径")
                 return
@@ -103,24 +108,103 @@ class Preferences(QWidget):
             self.message.setText(str(error))
 
 
+def cycle_range(request):
+    return " — ".join(datetime.fromisoformat(request[key]).strftime("%m-%d %H:%M") for key in ("start", "end"))
+
+
+class CycleStatus(QWidget):
+    """Session-only automatic outcomes; durable reports stay in DiaryLibrary."""
+    open_requested = Signal(str)
+    retry_requested = Signal(str)
+
+    def __init__(self, cycles, jobs):
+        super().__init__()
+        self.cycles, self.jobs = cycles, jobs
+        self.results, self.rows = {}, {}
+        self.setObjectName("cycleStatus")
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 10, 20, 10)
+        layout.setSpacing(4)
+        for row in cycles.overview():
+            kind = row["kind"]
+            line = QHBoxLayout()
+            label = QLabel()
+            label.setTextFormat(Qt.PlainText)
+            label.setWordWrap(True)
+            label.setMinimumWidth(0)
+            open_button, retry = QPushButton("查看报告"), QPushButton("重试")
+            open_button.clicked.connect(lambda checked=False, k=kind: self.open_requested.emit(self.results[k]["entry_id"]))
+            retry.clicked.connect(lambda checked=False, k=kind: self.retry_requested.emit(k))
+            line.addWidget(label, 1)
+            line.addWidget(open_button)
+            line.addWidget(retry)
+            layout.addLayout(line)
+            self.rows[kind] = {"label": label, "open": open_button, "retry": retry}
+        jobs.observe(self.update_task)
+
+    def update_task(self, state):
+        request = state.get("request", {})
+        if request.get("automatic") and not state["pending"]:
+            result = self.results.setdefault(request["kind"], {})
+            result["error"] = state.get("error")
+            if state.get("entry_id"):
+                result.update(entry_id=state["entry_id"], request=deepcopy(request))
+        self.refresh()
+
+    def refresh(self):
+        state = self.jobs.state
+        running = state.get("request", {}) if state["pending"] else {}
+        for row in self.cycles.overview():
+            kind = row["kind"]
+            widgets, result = self.rows[kind], self.results.get(kind, {})
+            request = row["request"]
+            if running.get("automatic") and running["kind"] == kind:
+                text = cycle_range(running) + " · " + state["stage"]
+            elif row["blocked"] and request:
+                text = cycle_range(request) + " · " + (result.get("error") or "生成失败") + "，等待重试"
+            elif request:
+                text = cycle_range(request) + " · 等待补做"
+            elif result.get("entry_id"):
+                text = cycle_range(result["request"]) + " · 已完成"
+            else:
+                text = "下次 " + datetime.fromisoformat(row["next_due"]).strftime("%m-%d %H:%M") if row["enabled"] else "自动生成已关闭"
+            widgets["label"].setText(KINDS[kind] + "：" + text)
+            widgets["open"].setVisible(bool(result.get("entry_id")))
+            widgets["retry"].setVisible(bool(row["blocked"] and request))
+            widgets["retry"].setEnabled(not state["pending"])
+
+
 class CyclePage(QWidget):
+    retry_requested = Signal(str)
+    settings_changed = Signal()
+
     def __init__(self, settings, cycles, jobs):
         super().__init__()
         self.settings, self.cycles, self.jobs = settings, cycles, jobs
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        body = QWidget()
+        scroll.setWidget(body)
+        outer.addWidget(scroll)
+        layout = QVBoxLayout(body)
         layout.setContentsMargins(32, 26, 32, 26)
         layout.addWidget(heading("周期设置"))
-        note = QLabel("仅在 e-Diary 打开期间运行。错过多个周期时，合并未总结时段生成一份。")
+        note = QLabel("打开后立即检查补做；仅在程序打开期间运行。同类积压合并一份，覆盖至最近一次配置的执行时刻。")
         note.setWordWrap(True)
         layout.addWidget(note)
-        self.table = QTableWidget(3, 5)
+        self.table = QTableWidget(3, 6)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.table.setHorizontalHeaderLabels(["内容", "自动生成", "间隔", "下次执行", "状态"])
+        self.table.setHorizontalHeaderLabels(["内容", "自动生成", "间隔", "下次执行", "状态", "重试"])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table.verticalHeader().hide()
         self.controls = {}
         self.units = {}
-        for row, (kind, rule) in enumerate(settings.data["cycles"].items()):
+        self.retry_buttons = {}
+        for row, snapshot in enumerate(cycles.overview()):
+            kind = snapshot["kind"]
+            rule = settings.data["cycles"][kind]
             enabled = Switch()
             enabled.setChecked(rule["enabled"])
             days = QSpinBox()
@@ -146,8 +230,12 @@ class CyclePage(QWidget):
             self.table.setItem(row, 0, QTableWidgetItem(KINDS[kind]))
             self.table.setCellWidget(row, 1, switch_host)
             self.table.setCellWidget(row, 2, interval)
+            retry = QPushButton("重试")
+            retry.clicked.connect(lambda checked=False, k=kind: self.retry_requested.emit(k))
+            self.retry_buttons[kind] = retry
+            self.table.setCellWidget(row, 5, retry)
             self.table.setRowHeight(row, 64)
-        self.table.setMaximumHeight(255)
+        self.table.setFixedHeight(255)
         layout.addWidget(self.table)
         time_row = QHBoxLayout()
         self.clock = QTimeEdit()
@@ -169,10 +257,7 @@ class CyclePage(QWidget):
         actions = QHBoxLayout()
         cancel = QPushButton("取消当前任务")
         cancel.clicked.connect(jobs.cancel)
-        retry = QPushButton("重试失败任务")
-        retry.clicked.connect(self.retry)
         actions.addWidget(cancel)
-        actions.addWidget(retry)
         actions.addStretch()
         layout.addLayout(actions)
         layout.addStretch()
@@ -189,29 +274,28 @@ class CyclePage(QWidget):
             self.settings.update(cycles=rules)
             self.cycles.blocked.clear()
             self.refresh()
+            self.settings_changed.emit()
         except (OSError, ValueError) as error:
             self.task.setText(str(error))
 
     def refresh(self):
-        for row, (kind, rule) in enumerate(self.settings.data["cycles"].items()):
-            start = datetime.fromisoformat(rule["last_end"] or rule["anchor"])
-            due = start + timedelta(days=rule["days"])
-            due = due.replace(hour=self.clock.time().hour(), minute=self.clock.time().minute())
-            self.table.setItem(row, 3, QTableWidgetItem(due.strftime("%Y-%m-%d %H:%M") if rule["enabled"] else "已关闭"))
-            self.table.setItem(row, 4, QTableWidgetItem("等待手动重试" if kind in self.cycles.blocked else "等待到期"))
+        state = self.jobs.state
+        running = state.get("request", {}) if state["pending"] else {}
+        for index, row in enumerate(self.cycles.overview()):
+            kind = row["kind"]
+            due = datetime.fromisoformat(row["next_due"])
+            status = "等待手动重试" if row["blocked"] else "等待补做" if row["request"] else "等待到期"
+            if not row["enabled"]:
+                status = "已关闭"
+            if running.get("automatic") and running["kind"] == kind:
+                status = "生成中"
+            self.table.setItem(index, 3, QTableWidgetItem(due.strftime("%Y-%m-%d %H:%M") if row["enabled"] else "已关闭"))
+            self.table.setItem(index, 4, QTableWidgetItem(status))
+            self.retry_buttons[kind].setEnabled(bool(row["blocked"] and row["request"] and not state["pending"]))
 
     def update_task(self, state):
         self.task.setText(state["stage"] + ("\n" + state["error"] if state.get("error") else ""))
         self.refresh()
-
-    def retry(self):
-        request = self.jobs.state.get("request")
-        if request and not self.jobs.state["pending"]:
-            try:
-                self.cycles.blocked.discard(request["kind"])
-                self.jobs.submit(request)
-            except DiaryError as error:
-                self.task.setText(str(error))
 
 
 class SourcePage(QWidget):

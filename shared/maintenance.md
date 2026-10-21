@@ -65,8 +65,17 @@ revision must remain readable when saving fails. Keep generation work off the
 GUI thread and marshal completion through signals; a cancelled or duplicate
 completion must not publish or advance cycle coverage. Rebuild search state from
 private files; do not make an index the only owner of diary content. Generated
-reviews and source-backed charts are read in-app, with live style resources
-resolved for each task rather than bundled into the public projection.
+reviews and source-backed charts are read in-app. The generic e-Diary prose
+discipline is tracked and shipped as package data; missing/empty prose_path uses
+it. An explicit custom prose path and private character resources are read live
+for each task. Never bundle private styles with this general-purpose resource.
+
+Cycle scheduling and every cycle display must use the Cycles Module's shared
+overview. Schedule the first check and post-completion checks on the Qt event
+loop; the recurring timer alone hides successful startup catch-up for seconds.
+Retry a failed automatic type from its own coverage, not the last generation
+request, which may belong to another successful type. Keep per-opening result
+links outside the page stack and preserve unsaved edits when opening them.
 
 For the independent Personal Experiment Box read [experiment-box](../docs/experiment-box.md).
 Its normal data starts empty; demo data remains memory-only. Never reuse the

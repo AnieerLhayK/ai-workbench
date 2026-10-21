@@ -402,3 +402,272 @@ def test_native_diary_edit_theme_periods_and_runtime_persistence(qt_app, tmp_pat
     reopened = create_window({"data_root": str(tmp_path), "read_codex": False})
     assert reopened.library.read(entry_id)["title"] == "测试日记"
     reopened.close()
+
+
+# Startup catch-up, using the real scheduler and controlled generation.
+AT = datetime.fromisoformat("2026-11-05T14:00:00+08:00")
+ANCHOR = "2026-10-14T09:00:00+08:00"
+
+
+class CycleClock(datetime):
+    """Freeze local wall time too, independently of the CI host timezone."""
+    instant = AT
+
+    @classmethod
+    def now(cls, tz=None):
+        value = cls.fromisoformat(cls.instant.isoformat())
+        return value.astimezone(tz) if tz is not None else value
+
+    def astimezone(self, tz=None):
+        return self if tz is None else super().astimezone(tz)
+
+
+def until(app, condition, seconds=3):
+    deadline = time.monotonic() + seconds
+    while not condition() and time.monotonic() < deadline:
+        app.processEvents()
+        QTest.qWait(5)
+    assert condition()
+
+
+@pytest.fixture
+def catchup(qt_app, tmp_path, monkeypatch):
+    import ai_workbench.e_diary.cycles as module
+
+    monkeypatch.setattr(module, "datetime", CycleClock)
+    monkeypatch.setattr("ai_workbench.e_diary.jobs.style_resources", lambda *args: ("", {}))
+
+    class Generation:
+        def __init__(self):
+            self.requests = []
+            self.fail = set()
+            self.hold = set()
+            self.release = threading.Event()
+
+        def collect(self, request, cancelled, progress):
+            self.requests.append(deepcopy(request))
+            return {"start": request["start"], "end": request["end"],
+                    "documents": [{"id": "fixture", "origin": "fixture", "body": "有日期的测试材料"}],
+                    "warnings": []}
+
+        def generate(self, prompt, directory, cancelled, progress):
+            kind = self.requests[-1]["kind"]
+            progress("测试正文生成中")
+            while kind in self.hold and not self.release.wait(.005):
+                if cancelled.is_set():
+                    raise DiaryError("任务已取消")
+            if kind in self.fail:
+                raise DiaryError(kind + " controlled failure")
+            return {"title": kind + " 补做报告", "body": "独立测试资料生成的正文", "files": []}
+
+    windows = []
+
+    def make():
+        root = tmp_path / "private-fixture"
+        settings = Settings(root)
+        if not settings.path.exists():
+            rules = deepcopy(settings.data["cycles"])
+            for rule in rules.values():
+                rule["anchor"] = ANCHOR
+            settings.update(cycles=rules)
+        window = create_window({"data_root": str(root), "read_codex": False,
+                                "staging_root": str(tmp_path / "scratch")})
+        generation = Generation()
+        window.sources.collect = generation.collect
+        window.jobs.adapter = generation
+        windows.append(window)
+        return window, generation
+
+    yield make
+    for window in windows:
+        window.close()
+        until(qt_app, lambda: not window.jobs.state["pending"])
+        window.close()
+        window.deleteLater()
+    qt_app.processEvents()
+
+
+def test_overview_and_due_share_time_merge_and_blocking():
+    settings = Settings()
+    for rule in settings.data["cycles"].values():
+        rule["anchor"] = ANCHOR
+    cycles = Cycles(settings)
+    before = datetime.fromisoformat("2026-10-21T08:59:59+08:00")
+    assert cycles.due(before) is None
+    assert cycles.overview(before)[0]["next_due"] == "2026-10-21T09:00:00+08:00"
+    at = datetime.fromisoformat("2026-10-23T14:00:00+08:00")
+    request = cycles.due(at)
+    assert request == cycles.overview(at)[0]["request"]
+    assert request["start"] == ANCHOR
+    assert request["end"] == "2026-10-23T09:00:00+08:00"
+    cycles.completed(request, False)
+    assert cycles.overview(at)[0]["blocked"]
+    assert cycles.due(at)["kind"] == "work"
+    assert cycles.retry("development", at) == request
+    cycles.completed(request, True)
+    assert cycles.overview(at)[0]["next_due"] == "2026-10-30T09:00:00+08:00"
+    assert cycles.overview(AT)[0]["request"]["start"] == request["end"]
+
+
+def test_startup_drains_all_types_without_timer_delay_and_reopen_does_not_repeat(qt_app, catchup):
+    window, generation = catchup()
+    assert generation.requests == []  # Construction never starts model work synchronously.
+    until(qt_app, lambda: len(window.library.query()) == 3 and not window.jobs.state["pending"])
+    assert [r["kind"] for r in generation.requests] == ["development", "work", "personal"]
+    for request in generation.requests:
+        assert request["start"] == ANCHOR
+        assert request["end"] == "2026-11-05T09:00:00+08:00"
+    for _ in range(3):
+        window.check_cycles()
+        qt_app.processEvents()
+    assert len(generation.requests) == 3
+    assert window.cycles.due() is None
+    window.close()
+    reopened, second = catchup()
+    qt_app.processEvents()
+    reopened.check_cycles()
+    assert second.requests == []
+    assert len(reopened.library.query()) == 3
+
+
+def test_pending_guards_and_typed_retry_survive_another_type_success(qt_app, catchup):
+    window, generation = catchup()
+    generation.fail.add("development")
+    generation.hold.add("work")
+    until(qt_app, lambda: len(generation.requests) == 2 and window.jobs.state["pending"])
+    for _ in range(3):
+        window.check_cycles()
+    assert len(generation.requests) == 2
+    assert not window.cycle_status.rows["development"]["retry"].isEnabled()
+    assert not window.cycle_page.retry_buttons["development"].isEnabled()
+    generation.release.set()
+    until(qt_app, lambda: len(generation.requests) == 3 and not window.jobs.state["pending"])
+    assert window.settings.data["cycles"]["development"]["last_end"] is None
+    assert window.cycles.blocked == {"development"}
+    assert "controlled failure" in window.cycle_status.rows["development"]["label"].text()
+    generation.fail.clear()
+    QTest.mouseClick(window.cycle_page.retry_buttons["development"], Qt.LeftButton)
+    until(qt_app, lambda: len(window.library.query()) == 3 and not window.jobs.state["pending"])
+    assert [r["kind"] for r in generation.requests] == ["development", "work", "personal", "development"]
+    assert not window.cycles.blocked
+
+
+def test_cancelled_type_retries_from_status_and_reopen_retries_failure(qt_app, catchup):
+    window, generation = catchup()
+    generation.hold.add("development")
+    until(qt_app, lambda: len(generation.requests) == 1)
+    window.jobs.cancel()
+    until(qt_app, lambda: len(generation.requests) == 3 and not window.jobs.state["pending"])
+    assert window.settings.data["cycles"]["development"]["last_end"] is None
+    assert "取消" in window.cycle_status.rows["development"]["label"].text()
+    generation.hold.clear()
+    generation.fail.add("development")
+    QTest.mouseClick(window.cycle_status.rows["development"]["retry"], Qt.LeftButton)
+    until(qt_app, lambda: len(generation.requests) == 4 and not window.jobs.state["pending"])
+    window.close()
+    reopened, second = catchup()
+    until(qt_app, lambda: len(reopened.library.query()) == 3 and not reopened.jobs.state["pending"])
+    assert [r["kind"] for r in second.requests] == ["development"]
+
+
+def test_status_is_global_preserves_editor_and_opens_exact_filtered_report(qt_app, catchup, monkeypatch):
+    window, generation = catchup()
+    window.show()
+    window.new_entry()
+    window.editor.body.setPlainText("自动补做期间继续写日记")
+    until(qt_app, lambda: len(generation.requests) == 3 and not window.jobs.state["pending"])
+    assert window.kind == "diary"
+    assert window.editor.body.toPlainText() == "自动补做期间继续写日记"
+    for page in ("sources", "cycles", "report", "settings", "diary"):
+        window.navigate(page)
+        assert window.cycle_status.isVisible()
+    report = window.library.query(kind="work")[0]
+    window.search.setText("无法匹配的筛选条件")
+    window.month.setCurrentIndex(2)
+    original_page = window.pages.currentWidget()
+    original_filters = (window.search.text(), window.month.currentIndex())
+    with monkeypatch.context() as patch:
+        patch.setattr(window.editor, "save", lambda: False)
+        QTest.mouseClick(window.cycle_status.rows["work"]["open"], Qt.LeftButton)
+        assert window.pages.currentWidget() is original_page
+        assert (window.search.text(), window.month.currentIndex()) == original_filters
+    QTest.mouseClick(window.cycle_status.rows["work"]["open"], Qt.LeftButton)
+    assert window.kind == "work"
+    assert window.editor.record["id"] == report["id"]
+    assert window.search.text() == "" and window.month.currentIndex() == 0
+    assert window.list.currentItem().data(Qt.UserRole) == report["id"]
+
+
+def test_close_before_first_event_does_not_start_catchup(qt_app, catchup):
+    window, generation = catchup()
+    window.close()
+    qt_app.processEvents()
+    assert generation.requests == []
+
+
+def test_close_during_generation_cancels_without_starting_next_type(qt_app, catchup):
+    window, generation = catchup()
+    generation.hold.add("development")
+    until(qt_app, lambda: len(generation.requests) == 1)
+    window.close()
+    until(qt_app, lambda: not window.jobs.state["pending"])
+    qt_app.processEvents()
+    assert [r["kind"] for r in generation.requests] == ["development"]
+    assert window.settings.data["cycles"]["development"]["last_end"] is None
+
+
+def test_manual_generation_does_not_replace_automatic_result_link(qt_app, catchup):
+    window, generation = catchup()
+    until(qt_app, lambda: len(generation.requests) == 3 and not window.jobs.state["pending"])
+    result = deepcopy(window.cycle_status.results["work"])
+    window.jobs.submit({"kind": "work", "start": ANCHOR, "end": AT.isoformat()})
+    until(qt_app, lambda: not window.jobs.state["pending"])
+    assert window.cycle_status.results["work"] == result
+
+
+def test_later_failure_retains_previously_completed_report_link(qt_app, catchup, monkeypatch):
+    window, generation = catchup()
+    until(qt_app, lambda: len(generation.requests) == 3 and not window.jobs.state["pending"])
+    completed_id = window.cycle_status.results["development"]["entry_id"]
+
+    class Later(CycleClock):
+        instant = AT + timedelta(days=8)
+
+    monkeypatch.setattr("ai_workbench.e_diary.cycles.datetime", Later)
+    generation.fail.add("development")
+    window.check_cycles()
+    until(qt_app, lambda: len(generation.requests) == 5 and not window.jobs.state["pending"])
+    assert window.cycle_status.results["development"]["entry_id"] == completed_id
+    assert not window.cycle_status.rows["development"]["open"].isHidden()
+    assert not window.cycle_status.rows["development"]["retry"].isHidden()
+
+
+@pytest.mark.parametrize("config", [{}, {"prose_path": ""}, {"prose_path": "   "}])
+def test_default_prose_is_available_without_external_configuration(config):
+    text, hashes = style_resources(config)
+    assert "# Prose Discipline" in text
+    assert "Concision is a consequence of relevance" in text
+    assert len(hashes) == 1
+
+
+def test_missing_custom_prose_does_not_silently_fall_back(tmp_path):
+    with pytest.raises(DiaryError, match="写作资源缺失"):
+        style_resources({"prose_path": str(tmp_path / "missing.md")})
+
+
+def test_preferences_can_save_builtin_prose(qt_app, tmp_path):
+    from ai_workbench.e_diary.pages import Preferences
+    settings = Settings()
+    config = {key: str(tmp_path / key) for key in ("codex_cli", "zf_root", "staging_root")}
+    widget = Preferences(settings, config, lambda _: None)
+    try:
+        widget.fields["prose_path"].setText("")
+        widget.save()
+        assert settings.data["runtime"]["prose_path"] == ""
+        assert "Prose Discipline" in style_resources(config)[0]
+        widget.fields["prose_path"].setText("relative.md")
+        widget.save()
+        assert settings.data["runtime"]["prose_path"] == ""
+        assert "绝对路径" in widget.message.text()
+    finally:
+        widget.close()

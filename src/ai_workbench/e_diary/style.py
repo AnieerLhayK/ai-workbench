@@ -39,6 +39,8 @@ def stylesheet(mode):
     return f"""
     QWidget {{ background:{background}; color:{text}; font-family:'Microsoft YaHei UI','Segoe UI'; font-size:16px; }}
     QMainWindow {{ background:{background}; }}
+    #cycleStatus {{ border-bottom:1px solid {border}; }}
+    #cycleStatus QPushButton {{ padding:4px 10px; }}
     #rail {{ background:{rail}; border-right:1px solid {border}; }}
     #brand {{ font-size:24px; font-weight:600; background:transparent; padding:14px 6px 22px; }}
     #rail QPushButton {{ background:transparent; text-align:left; padding:12px 14px; border:0; font-size:19px; border-radius:6px; }}
