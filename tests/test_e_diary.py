@@ -13,7 +13,7 @@ from PySide6.QtTest import QTest
 
 from ai_workbench.e_diary.app import create_window
 from ai_workbench.e_diary.library import DiaryLibrary, DiaryError, Conflict, load_json
-from ai_workbench.e_diary.settings import Settings, style_resources
+from ai_workbench.e_diary.settings import Settings, StyleResources, style_resources
 from ai_workbench.e_diary.cycles import Cycles
 from ai_workbench.e_diary.sources import Sources, in_period
 from ai_workbench.e_diary.reports import Reports, chart_for
@@ -101,6 +101,268 @@ def test_settings_merge_latest_external_document(tmp_path):
     path.write_text(json.dumps(document), encoding="utf-8")
     settings.update(theme="dark")
     assert json.loads(path.read_text(encoding="utf-8"))["another_consumer"] == {"keep": True}
+
+
+def style_source(tmp_path):
+    source = tmp_path / "source"
+    (source / "references").mkdir(parents=True)
+    (source / "prompts").mkdir()
+    (source / "SKILL.md").write_text("original name\n`references/voice.md`", encoding="utf-8")
+    (source / "references/voice.md").write_text("voice\n`prompts/write.md`", encoding="utf-8")
+    (source / "prompts/write.md").write_text("write", encoding="utf-8")
+    (source / "private-corpus.txt").write_text("not a resource", encoding="utf-8")
+    return source
+
+
+def test_style_mirror_is_explicit_independent_complete_and_tamper_checked(tmp_path):
+    source = style_source(tmp_path)
+    config = {"data_root": str(tmp_path / "data"), "zf_root": str(source)}
+    resources = StyleResources(config)
+    assert not resources.status()["available"]
+    with pytest.raises(DiaryError, match="尚未同步"):
+        style_resources(config, True)
+    first = resources.sync()
+    assert set(resources.load()) == {"SKILL.md", "references/voice.md", "prompts/write.md"}
+    before = style_resources(config, True)
+    (source / "references/voice.md").write_text("new voice", encoding="utf-8")
+    assert style_resources(config, True) == before
+    second = resources.sync()
+    assert second["version"] != first["version"]
+    assert resources.load()["references/voice.md"] == "new voice"
+    source.rename(tmp_path / "source-unavailable")
+    assert resources.status()["available"]
+    with pytest.raises(DiaryError): resources.sync()
+    assert resources.status()["version"] == second["version"]
+    (resources.root / second["version"] / "SKILL.md").write_text("edited", encoding="utf-8")
+    with pytest.raises(DiaryError, match="修改"): resources.load()
+
+
+def test_failed_style_pointer_commit_keeps_last_snapshot(tmp_path, monkeypatch):
+    source = style_source(tmp_path)
+    resources = StyleResources({"data_root": str(tmp_path / "data"), "zf_root": str(source)})
+    before = resources.sync()
+    (source / "SKILL.md").write_text("changed", encoding="utf-8")
+    def fail(*args): raise OSError("disk full")
+    monkeypatch.setattr("ai_workbench.e_diary.settings.atomic_json", fail)
+    with pytest.raises(OSError): resources.sync()
+    assert resources.status()["version"] == before["version"]
+    assert resources.load()["SKILL.md"].startswith("original name")
+
+
+def test_style_reference_escape_and_missing_dependency_preserve_old(tmp_path):
+    source = style_source(tmp_path)
+    resources = StyleResources({"data_root": str(tmp_path / "data"), "zf_root": str(source)})
+    before = resources.sync()
+    for reference in ("references/missing.md", "references/../../outside.md"):
+        (source / "SKILL.md").write_text(reference, encoding="utf-8")
+        with pytest.raises(DiaryError): resources.sync()
+        assert resources.status()["version"] == before["version"]
+
+
+def test_style_relative_reference_closure_and_rooted_manifest_rejection(tmp_path):
+    source = style_source(tmp_path)
+    (source / "references/voice.md").write_text('`rhythm.md`\n[rhythm](rhythm.md "Rhythm")', encoding="utf-8")
+    (source / "references/rhythm.md").write_text("[recipe][r]\n\n[r]: ../prompts/write.md", encoding="utf-8")
+    resources = StyleResources({"data_root": str(tmp_path / "data"), "zf_root": str(source)})
+    current = resources.sync()
+    assert resources.load()["references/rhythm.md"].startswith("[recipe]")
+    current["files"]["\\outside.md"] = "x"
+    with pytest.raises(DiaryError, match="路径"):
+        resources._read(current)
+    (source / "SKILL.md").write_text("`references/private-corpus.md`", encoding="utf-8")
+    (source / "references/private-corpus.md").write_text("private", encoding="utf-8")
+    with pytest.raises(DiaryError, match="原始语料"):
+        resources.sync()
+
+
+def test_style_preferences_manual_sync_and_failure_status(tmp_path, qt_app):
+    from ai_workbench.e_diary.pages import Preferences
+    source = style_source(tmp_path)
+    config = {"data_root": str(tmp_path / "data"), "zf_root": str(source)}
+    settings = Settings(config["data_root"], config)
+    page = Preferences(settings, config, lambda _: None)
+    assert "尚未同步" in page.style_status.text()
+    QTest.mouseClick(page.sync_style_button, Qt.LeftButton)
+    assert "上次同步" in page.style_status.text()
+    old = page.style.status()["version"]
+    (source / "SKILL.md").write_text("references/missing.md", encoding="utf-8")
+    QTest.mouseClick(page.sync_style_button, Qt.LeftButton)
+    assert "同步失败" in page.message.text()
+    assert page.style.status()["version"] == old
+    page.close()
+
+
+def directory_fixture(tmp_path):
+    root = tmp_path / "laboratory"
+    root.mkdir()
+    (root / "notes.md").write_text("之前的实验背景", encoding="utf-8")
+    settings = Settings(tmp_path / "data")
+    library = DiaryLibrary(tmp_path / "data")
+    sources = Sources(settings, library, {"read_codex": False})
+    sources.register([{"id": "lab", "path": str(root), "enabled": True, "type": "directory"}])
+    request = {"kind": "work", "start": "2026-10-01T00:00:00+08:00", "end": "2026-10-15T00:00:00+08:00"}
+    return root, settings, library, sources, request
+
+
+def test_directory_registration_changes_comparison_and_durable_coverage(tmp_path):
+    root, settings, library, sources, request = directory_fixture(tmp_path)
+    collect = lambda: sources.collect(request, threading.Event(), lambda _: None)
+    initial = collect()
+    assert initial["documents"][0]["evidence_role"] == "historical_background"
+    assert not initial["directory_versions"]["lab"]["files"]
+    (root / "notes.md").write_text("补充的早期实验结果", encoding="utf-8")
+    changed = collect()
+    assert changed["documents"][0]["evidence_role"] == "delayed_evidence"
+    sources.acknowledge(changed, {**request, "comparison": True})
+    assert collect()["directory_versions"]["lab"]["files"]
+    sources.acknowledge(changed, request)
+    assert not collect()["directory_versions"]["lab"]["files"]
+    reopened = Sources(Settings(library.root), library, {"read_codex": False})
+    assert not reopened.collect(request, threading.Event(), lambda _: None)["directory_versions"]["lab"]["files"]
+    sources.register([{k: v for k, v in settings.data["sources"][0].items() if k in ("id", "path", "type", "enabled")}])
+    assert not collect()["directory_versions"]["lab"]["files"]
+
+
+def test_pptx_directory_text_and_corrupt_or_entity_xml_are_bounded(tmp_path):
+    root, settings, library, sources, request = directory_fixture(tmp_path)
+    with zipfile.ZipFile(root / "slides.pptx", "w") as archive:
+        archive.writestr("ppt/slides/slide1.xml", '<a:r xmlns:a="urn:a"><a:t>实验已经跑通</a:t></a:r>')
+    data = sources.collect(request, threading.Event(), lambda _: None)
+    assert any("实验已经跑通" in doc["body"] for doc in data["documents"])
+    for encoding in ("utf-8", "utf-16", "utf-32"):
+        with zipfile.ZipFile(root / "bad.pptx", "w") as archive:
+            archive.writestr("ppt/slides/slide1.xml", '<!DOCTYPE t [<!ENTITY x "bad">]><t>&x;</t>'.encode(encoding))
+        data = sources.collect(request, threading.Event(), lambda _: None)
+        assert any("DTD" in warning for warning in data["warnings"])
+        assert "bad.pptx" not in data["directory_versions"]["lab"]["files"]
+    (root / "bad.pptx").write_bytes(b"not a zip")
+    assert any("bad.pptx" in warning for warning in sources.collect(request, threading.Event(), lambda _: None)["warnings"])
+    cancelled = threading.Event(); cancelled.set()
+    with pytest.raises(DiaryError, match="取消"):
+        sources.collect(request, cancelled, lambda _: None)
+
+
+def test_lab_priority_history_and_adopted_versions_budget(tmp_path, monkeypatch):
+    root, settings, library, sources, request = directory_fixture(tmp_path)
+    library.save(fields(date="2026-09-20", body="长期想让实验过程更可靠"))
+    library.save(fields(kind="work", date="2026-09-21", body="过去的生成报告"))
+    for index in range(5):
+        (root / f"experiment-{index}.md").write_text("新增实验材料" * 2000, encoding="utf-8")
+    sources.config["read_codex"] = True
+    monkeypatch.setattr(sources, "_sessions", lambda *args: [{"id": "huge", "body": "x"*180000, "origin": "codex"}])
+    sources.session_warnings = []
+    data = sources.collect(request, threading.Event(), lambda _: None)
+    assert any(doc["origin"] == "directory" for doc in data["documents"])
+    assert any(doc["origin"] == "diary" and doc["evidence_role"] == "historical_background" for doc in data["documents"])
+    assert any("4 万" in warning for warning in data["warnings"])
+    adopted = data["directory_versions"]["lab"]["files"]
+    assert 0 < len(adopted) < 5
+    sources.acknowledge(data, request)
+    assert set(adopted) == set(settings.data["sources"][0]["covered"])
+    assert not any(doc["origin"] == "directory" for doc in sources.collect({**request, "kind": "development"}, threading.Event(), lambda _: None)["documents"])
+
+
+def test_generation_failure_cancel_and_comparison_do_not_consume_directory(tmp_path, qt_app, monkeypatch):
+    root, settings, library, sources, request = directory_fixture(tmp_path)
+    (root / "notes.md").write_text("后来补充的实验结果", encoding="utf-8")
+    config = {"data_root": str(library.root), "staging_root": str(tmp_path / "scratch")}
+    monkeypatch.setattr("ai_workbench.e_diary.jobs.style_resources", lambda *args: ("", {}))
+    class Adapter:
+        fail = False
+        cancel = False
+        def generate(self, prompt, directory, cancelled, progress):
+            self.prompt = prompt
+            if self.cancel: cancelled.set()
+            if self.fail: raise DiaryError("controlled failure")
+            return {"title": "一条主线", "body": "这段时间逐渐把实验思路理顺了。"}
+    adapter = Adapter()
+    jobs = GenerationJobs(adapter, sources, library, settings, Reports(settings), Cycles(settings), config)
+    for mode in ("fail", "cancel", "comparison", "normal"):
+        adapter.fail, adapter.cancel = mode == "fail", mode == "cancel"
+        jobs.submit({**request, "comparison": mode == "comparison"})
+        until(qt_app, lambda: not jobs.state["pending"])
+        assert bool(settings.data["sources"][0]["covered"]) == (mode == "normal")
+    assert "600–2000" in adapter.prompt and "historical_background" in adapter.prompt
+    assert len(library.query(kind="work")) == 2
+    assert settings.data["cycles"]["work"]["last_end"] is None
+
+
+def test_truncated_directory_version_remains_pending(tmp_path):
+    root, settings, library, sources, request = directory_fixture(tmp_path)
+    (root / "notes.md").write_text("背景" * 9000 + "新增结果", encoding="utf-8")
+    bundle = sources.collect(request, threading.Event(), lambda _: None)
+    assert any(doc["origin"] == "directory" and not doc["complete"] for doc in bundle["documents"])
+    sources.acknowledge(bundle, request)
+    assert not settings.data["sources"][0]["covered"]
+    assert any("未推进该文件覆盖" in value for value in bundle["warnings"])
+
+
+def test_saved_generation_recovers_coverage_without_regenerating(tmp_path, qt_app, monkeypatch):
+    root, settings, library, sources, request = directory_fixture(tmp_path)
+    (root / "notes.md").write_text("新增实验进展", encoding="utf-8")
+    monkeypatch.setattr("ai_workbench.e_diary.jobs.style_resources", lambda *args: ("", {}))
+    class Adapter:
+        calls = 0
+        def generate(self, *args):
+            self.calls += 1
+            return {"title": "已保存的主线", "body": "实验思路有了进展。"}
+    adapter = Adapter()
+    config = {"staging_root": str(tmp_path / "scratch")}
+    cycles = Cycles(settings)
+    jobs = GenerationJobs(adapter, sources, library, settings, Reports(settings), cycles, config)
+    with monkeypatch.context() as patch:
+        patch.setattr(sources, "acknowledge", lambda *args: (_ for _ in ()).throw(OSError("disk")))
+        jobs.submit({**request, "automatic": True})
+        until(qt_app, lambda: not jobs.state["pending"])
+        assert jobs.state["error"] is None and "覆盖记录待恢复" in jobs.state["stage"]
+        assert len(library.query(kind="work")) == 1 and "work" in cycles.blocked
+        with pytest.raises(DiaryError, match="报告已保存"):
+            jobs.submit({**request, "automatic": True})
+    reopened = DiaryLibrary(library.root)
+    recovered = GenerationJobs(adapter, sources, reopened, settings, Reports(settings), Cycles(settings), config)
+    assert settings.data["sources"][0]["covered"]
+    assert settings.data["cycles"]["work"]["last_end"] == request["end"]
+    assert not reopened.query(kind="work")[0]["provenance"].get("pending_coverage")
+    recovered.submit({**request, "automatic": True})
+    assert adapter.calls == 1 and len(reopened.query(kind="work")) == 1
+    recovered.cycles.blocked.add("work")
+    with monkeypatch.context() as patch:
+        patch.setattr(reopened, "acknowledge_generation", lambda *args: (_ for _ in ()).throw(OSError("descriptor")))
+        recovered.submit({**request, "comparison": True})
+        until(qt_app, lambda: not recovered.state["pending"])
+        assert not reopened.read(recovered.state["entry_id"])["provenance"].get("pending_coverage")
+    assert "work" in recovered.cycles.blocked
+
+
+def test_demo_new_resource_entrypoints_do_not_read_private_paths(tmp_path, monkeypatch):
+    config = {"demo": True, "data_root": str(tmp_path), "zf_root": str(tmp_path / "style")}
+    def forbidden(*args, **kwargs):
+        pytest.fail("demo accessed a private path")
+    monkeypatch.setattr("ai_workbench.e_diary.settings.load_json", forbidden)
+    monkeypatch.setattr("ai_workbench.e_diary.sources.os.scandir", forbidden)
+    assert not StyleResources(config).status()["available"]
+    sources = Sources(Settings(), DiaryLibrary(), config)
+    with pytest.raises(DiaryError, match="演示模式"):
+        sources.register([{"id": "private", "type": "directory", "path": str(tmp_path)}])
+
+
+def test_comparison_ui_saves_first_and_preserves_original(qt_app, monkeypatch):
+    window = create_window(demo=True)
+    original = window.library.query(kind="work")[0]
+    window.editor.load(original)
+    sent = []
+    monkeypatch.setattr(window.jobs, "submit", lambda request: sent.append(request))
+    monkeypatch.setattr(window.editor, "save", lambda: False)
+    window.compare(original)
+    assert not sent
+    monkeypatch.setattr(window.editor, "save", lambda: True)
+    window.compare(original)
+    assert sent[0]["comparison"] and sent[0]["comparison_of"] == original["id"]
+    assert "entry_id" not in sent[0]
+    assert window.library.read(original["id"])["body"] == original["body"]
+    window.editor.clear()
+    assert window.editor.comparison.isHidden()
+    window.close()
 
 
 def test_dirty_diary_selection_survives_saved_signal_refresh(qt_app):

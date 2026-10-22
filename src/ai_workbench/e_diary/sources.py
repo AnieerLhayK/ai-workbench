@@ -1,10 +1,16 @@
 """Bounded evidence collection, branch-aware imports and read-only project intake."""
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import json
+import hashlib
+import os
 from pathlib import Path
+import re
 import subprocess
 import zipfile
 from uuid import uuid4
+from threading import Event
+from collections import deque
+from xml.etree import ElementTree
 
 from ..storage import atomic_json
 from .codex import AppServer
@@ -38,6 +44,106 @@ class Sources:
         self.settings, self.library = settings, library
         self.config = config or {}
         self.memory_imports = {}
+
+    def register(self, values):
+        """Register a directory once; its initial contents are background only."""
+        if self.config.get("demo"):
+            raise DiaryError("演示模式不读取真实资料目录")
+        previous = {item["id"]: item for item in self.settings.data["sources"]}
+        registered = []
+        for item in values:
+            item = dict(item)
+            old = previous.get(item["id"], {})
+            if item.get("type") == "directory":
+                if old.get("path") == item["path"] and old.get("type") == "directory" and "baseline" in old:
+                    item.update({key: old[key] for key in ("baseline", "covered", "registered_at", "baseline_warnings") if key in old})
+                else:
+                    docs, warnings = self._directory(Path(item["path"]), Event())
+                    item.update(baseline={doc["relative"]: doc["fingerprint"] for doc in docs},
+                                covered={}, registered_at=now(), baseline_warnings=warnings)
+            registered.append(item)
+        self.settings.update(sources=registered)
+
+    def _directory(self, root, cancelled):
+        """Bounded local text/PPTX Adapter. mtime never means activity time."""
+        if not root.is_absolute() or not root.is_dir() or any(is_link(p) for p in [root, *root.parents]):
+            raise DiaryError("普通目录来源必须是存在的非链接绝对目录")
+        documents, warnings, pending = [], [], deque([root])
+        visited, consumed = 0, 0
+        while pending:
+            directory = pending.popleft()
+            with os.scandir(directory) as entries:
+                for entry in entries:
+                    if cancelled.is_set():
+                        raise DiaryError("任务已取消")
+                    visited += 1
+                    if visited > 2000 or len(documents) >= 200:
+                        return documents, [*warnings, "普通目录达到 2000 项或 200 文件预算，部分材料未读取"]
+                    path = Path(entry.path)
+                    if entry.name.lower() in EXCLUDED or is_link(path):
+                        continue
+                    if entry.is_dir(follow_symlinks=False):
+                        pending.append(path)
+                        continue
+                    if not entry.is_file(follow_symlinks=False) or path.suffix.lower() not in TEXT_TYPES | {".pptx"}:
+                        continue
+                    try:
+                        size = entry.stat(follow_symlinks=False).st_size
+                        if size > 8_000_000 or consumed + size > 16_000_000:
+                            warnings.append(f"普通目录读取预算不足，未读取：{path.name}")
+                            continue
+                        with path.open("rb") as stream:
+                            raw = stream.read(8_000_001)
+                        if len(raw) > 8_000_000:
+                            raise DiaryError("文件超过 8 MB")
+                        consumed += len(raw)
+                        body = self._slides(raw) if path.suffix.lower() == ".pptx" else raw.decode("utf-8-sig")
+                        relative = path.relative_to(root).as_posix()
+                        documents.append({"id": "directory:" + str(path), "title": relative, "body": body[:16000],
+                                          "path": str(path), "relative": relative, "complete": len(body) <= 16000,
+                                          "fingerprint": hashlib.sha256(raw).hexdigest(), "at": None, "origin": "directory"})
+                        if len(body) > 16000:
+                            warnings.append(f"普通目录正文已截短，未推进该文件覆盖：{relative}")
+                    except (OSError, ValueError, zipfile.BadZipFile, ElementTree.ParseError) as error:
+                        warnings.append(f"普通目录文件未读取：{path.name}（{error}）")
+        return documents, warnings
+
+    @staticmethod
+    def _slides(raw):
+        import io
+        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+            members = sorted((item for item in archive.infolist() if
+                              re.fullmatch(r"ppt/(?:slides/slide|notesSlides/notesSlide)\d+\.xml", item.filename)),
+                             key=lambda item: (item.filename.split('/')[1], int(re.search(r"(\d+)\.xml", item.filename)[1])))
+            if not members or len(members) > 200 or sum(item.file_size for item in members) > 8_000_000:
+                raise DiaryError("PPTX 内容为空或超过提取预算")
+            parts = []
+            for item in members:
+                with archive.open(item) as stream:
+                    xml = stream.read(1_000_001)
+                if len(xml) > 1_000_000:
+                    raise DiaryError("PPTX 页面超过提取预算")
+                if b"<!DOCTYPE" in xml.replace(b"\x00", b"").upper() or b"<!ENTITY" in xml.replace(b"\x00", b"").upper():
+                    raise DiaryError("PPTX 包含不支持的 DTD 或实体")
+                tree = ElementTree.fromstring(xml)
+                texts = [node.text for node in tree.iter() if node.tag.endswith("}t") and node.text]
+                parts.append(item.filename + "\n" + "\n".join(texts))
+            return "\n\n".join(parts)
+
+    def acknowledge(self, bundle, request):
+        """Only successfully saved normal work reports consume adopted versions."""
+        if request["kind"] != "work" or request.get("comparison"):
+            return
+        adopted = bundle.get("directory_versions", {})
+        if not adopted:
+            return
+        from copy import deepcopy
+        sources = deepcopy(self.settings.data["sources"])
+        for source in sources:
+            value = adopted.get(source["id"])
+            if value and value["path"] == source["path"] and value["registered_at"] == source.get("registered_at"):
+                source.setdefault("covered", {}).update(value["files"])
+        self.settings.update(sources=sources)
 
     def import_file(self, path):
         if self.config.get("demo"):
@@ -184,8 +290,25 @@ class Sources:
             else:
                 self.session_warnings.append("会话列表达到分页上限，未读取更早页面")
 
+    def _history(self, request):
+        start = datetime.fromisoformat(request["start"]).date()
+        lower = start - timedelta(days=180)
+        docs, budget = [], 24000
+        for kind, limit in (("diary", 20), (request["kind"], 8)):
+            records = self.library.query(kind=kind, start=lower.isoformat(), end=(start-timedelta(days=1)).isoformat())
+            for record in records[:limit]:
+                text = record["body"][:min(2400, budget)]
+                if not text:
+                    break
+                budget -= len(text)
+                docs.append({"id": "history:" + record["id"], "title": record["title"], "body": text,
+                             "at": record["date"], "origin": kind, "evidence_role": "historical_background",
+                             "timing": "报告周期之前的长期背景；历史生成报告只辅助理解，不能独立证明事实"})
+        return docs
+
     def collect(self, request, cancelled, progress):
         documents, warnings = [], []
+        directory_documents, directory_sources = [], {}
         start, end = request["start"], request["end"]
         included = request.get("include", ["diary", "development", "work"])
         for kind in included:
@@ -196,10 +319,16 @@ class Sources:
                         continue
                 elif not start[:10] <= record["date"] < end[:10]:
                     continue
+                if record["id"] == request.get("comparison_of"):
+                    continue
                 documents.append({"id": record["id"], "title": record["title"], "body": record["body"],
-                    "at": record["date"], "origin": kind})
+                    "at": record["date"], "origin": kind,
+                    "evidence_role": "self_report" if kind == "diary" else "generated_context"})
         if self.config.get("demo"):
             return {"documents": documents, "warnings": ["演示模式仅使用内存示例，不读取真实资料"], "start": start, "end": end}
+        history = self._history(request) if request["kind"] in ("development", "work") else []
+        if request["kind"] in ("development", "work") and not history:
+            warnings.append("未找到本期之前的长期回顾背景；不能据此断言长期取向或变化")
         for item in self.settings.data["imports"]:
             docs = (load_json(self.library.root / "imports" / (item["id"] + ".json"))["documents"]
                     if self.library.root else self.memory_imports[item["id"]])
@@ -218,6 +347,30 @@ class Sources:
                 if not source.get("enabled"):
                     continue
                 root = Path(source["path"])
+                if source.get("type") == "directory":
+                    if request["kind"] != "work":
+                        continue
+                    progress("读取普通目录工作资料")
+                    try:
+                        docs, limits = self._directory(root, cancelled)
+                        warnings += limits + source.get("baseline_warnings", [])
+                        if "baseline" not in source:
+                            warnings.append(f"普通目录尚未建立基线，请在资料来源保存登记：{root.name}")
+                            continue
+                        directory_sources[source["id"]] = {"path": source["path"], "registered_at": source["registered_at"], "files": {}}
+                        for doc in docs:
+                            covered = source.get("covered", {}).get(doc["relative"], source["baseline"].get(doc["relative"]))
+                            changed = covered != doc["fingerprint"]
+                            doc.update(source_id=source["id"], changed=changed,
+                                       timing="此次新发现或内容变化的实验室材料；可能涉及早期工作，须声明与报告日期不完全重叠，不以文件更新时间认定完成日期" if changed else
+                                              "存量或已覆盖的实验室背景，不认定为本期新增工作",
+                                       evidence_role="delayed_evidence" if changed else "historical_background")
+                        directory_documents += sorted(docs, key=lambda doc: not doc["changed"])
+                    except (OSError, DiaryError) as error:
+                        if cancelled.is_set():
+                            raise
+                        warnings.append(f"普通目录未读取：{root.name}（{error}）")
+                    continue
                 if not root.is_dir() or is_link(root):
                     warnings.append(f"目录缺失或是链接：{root}")
                     continue
@@ -246,8 +399,18 @@ class Sources:
                 documents.append({"id": "extra:" + str(candidate), "title": candidate.name,
                     "body": candidate.read_text(encoding="utf-8", errors="replace"), "at": None,
                     "origin": "extra", "path": str(candidate), "timing": "本次明确授权的补充资料"})
+        # Keep a dedicated laboratory slice before general session evidence.
+        laboratory, lab_count = [], 0
+        for doc in sorted(directory_documents, key=lambda doc: (not doc["changed"], Path(doc["relative"]).suffix.lower() != ".pptx")):
+            if lab_count + len(doc["body"]) > 40000:
+                warnings.append("实验室材料达到 4 万字符预算，未纳入部分不会推进覆盖")
+                continue
+            laboratory.append(doc)
+            lab_count += len(doc["body"])
+            if doc["changed"] and doc["complete"]:
+                directory_sources[doc["source_id"]]["files"][doc["relative"]] = doc["fingerprint"]
         unique, count = {}, 0
-        for doc in documents:
+        for doc in [*laboratory, *history, *documents]:
             if doc["id"] in unique:
                 continue
             if count + len(doc["body"]) > 180000:
@@ -255,4 +418,5 @@ class Sources:
                 break
             unique[doc["id"]] = doc
             count += len(doc["body"])
-        return {"documents": list(unique.values()), "warnings": list(dict.fromkeys(warnings)), "start": start, "end": end}
+        return {"documents": list(unique.values()), "warnings": list(dict.fromkeys(warnings)), "start": start, "end": end,
+                "directory_versions": directory_sources}

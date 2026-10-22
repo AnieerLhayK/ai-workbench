@@ -139,6 +139,7 @@ class DiaryWindow(QMainWindow):
         self.editor = Editor(library, settings)
         self.editor.saved.connect(self.entry_saved)
         self.editor.regenerate.connect(self.regenerate)
+        self.editor.compare.connect(self.compare)
         splitter.addWidget(self.editor)
         splitter.setSizes([351, 946])
         splitter.setChildrenCollapsible(False)
@@ -263,6 +264,12 @@ class DiaryWindow(QMainWindow):
             self.manual_generate()
             return
         self.submit({"kind": record["kind"], **period, "entry_id": record["id"]})
+
+    def compare(self, record):
+        if not record or not record.get("period") or not self.editor.save():
+            return
+        self.submit({"kind": record["kind"], **record["period"], "comparison": True,
+                     "comparison_of": record["id"]})
 
     def submit(self, request):
         try:

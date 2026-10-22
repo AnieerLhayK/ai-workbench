@@ -67,8 +67,9 @@ completion must not publish or advance cycle coverage. Rebuild search state from
 private files; do not make an index the only owner of diary content. Generated
 reviews and source-backed charts are read in-app. The generic e-Diary prose
 discipline is tracked and shipped as package data; missing/empty prose_path uses
-it. An explicit custom prose path and private character resources are read live
-for each task. Never bundle private styles with this general-purpose resource.
+it. An explicit custom prose path is read live for each task; private character
+resources use manually synchronized snapshots. Never bundle private styles
+with this general-purpose resource.
 
 Cycle scheduling and every cycle display must use the Cycles Module's shared
 overview. Schedule the first check and post-completion checks on the Qt event
@@ -166,3 +167,24 @@ both release channels. Never promote an unverified candidate as stable or
 modify source while freezing a version. Keep native fixtures independent of
 the workbench application's imports. A source build does not update an installed
 shortcut: verify its actual target and packaged source/resources at delivery.
+
+## Private e-Diary style snapshots
+
+Keep user-style updates explicit and atomic. Generation loads an immutable
+private snapshot rather than its upstream skill; check reference closure and
+failed commits through StyleResources. Preserve original resource identity,
+keep private payloads outside source/export, and fingerprint exact decoded
+text without newline normalization. Legacy zf_root selects only the sync source.
+
+## Retrospective evidence
+
+Keep Sources responsible for registration baselines, content fingerprints,
+delayed evidence and successful acknowledgements. File modification/discovery
+time is never proof of activity time. Reserve laboratory evidence before generic
+session budgets; unadopted files must remain pending with visible coverage limits.
+Comparison generation saves a new report and consumes neither directory nor cycle
+coverage. Historical generated reports are auxiliary context, not independent
+factual evidence. Validate prose quality with actual user comparison after tests.
+The saved descriptor is the generation commit point. Keep failed coverage
+bookkeeping as a durable pending acknowledgement on that entry; recover it
+idempotently on reopening or submission, without calling the model again.

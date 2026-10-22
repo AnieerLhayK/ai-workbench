@@ -2,7 +2,7 @@
   "data_root": "<absolute-private-data-directory>",
   "codex_cli": "<absolute-existing-codex-executable>",
   "prose_path": "",
-  "zf_root": "<absolute-live-zf-skill-directory>",
+  "zf_root": "<absolute-user-style-sync-source-directory>",
   "staging_root": "<absolute-approved-staging-directory>",
   "source_roots": ["<absolute-workspace-git-root>", "<absolute-project-collection-root>"],
   "read_codex": true,

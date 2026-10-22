@@ -26,6 +26,7 @@ class Chart(QWidget):
 class Editor(QWidget):
     saved = Signal(str)
     regenerate = Signal(object)
+    compare = Signal(object)
 
     def __init__(self, library, settings):
         super().__init__()
@@ -47,15 +48,18 @@ class Editor(QWidget):
         self.status.setObjectName("muted")
         self.regen = QPushButton("重新生成")
         self.regen.clicked.connect(lambda: self.regenerate.emit(self.record))
+        self.comparison = QPushButton("生成对比版")
+        self.comparison.clicked.connect(lambda: self.compare.emit(self.record))
         overflow = QPushButton("…")
         menu = QMenu(overflow)
         menu.addAction("查看历史版本", self.history)
         self.remove = menu.addAction("删除这篇记录", self.delete)
         overflow.setMenu(menu)
-        for widget in (self.date, self.period): header.addWidget(widget)
+        header.addWidget(self.date)
         header.addStretch()
-        for widget in (self.status, self.regen, overflow): header.addWidget(widget)
+        for widget in (self.status, self.regen, self.comparison, overflow): header.addWidget(widget)
         outer.addLayout(header)
+        outer.addWidget(self.period)
         self.title = QLineEdit()
         self.title.setObjectName("title")
         self.title.setPlaceholderText("今天想记些什么")
@@ -141,7 +145,7 @@ class Editor(QWidget):
         self.count.clear()
         self.message.clear()
         self.period.clear()
-        for widget in (self.generated_label, self.regen, self.sources, self.restore,
+        for widget in (self.generated_label, self.regen, self.comparison, self.sources, self.restore,
                        self.reload_button, self.keep_button, self.period):
             widget.hide()
         self.date.setVisible(kind == "diary")
@@ -192,6 +196,7 @@ class Editor(QWidget):
         self.period.setVisible(summary)
         deleted = record.get("deleted", False)
         self.regen.setVisible(summary and not deleted)
+        self.comparison.setVisible(summary and not deleted and record["kind"] in ("development", "work"))
         self.sources.setVisible(summary)
         self.restore.setVisible(deleted)
         self.remove.setText("永久删除" if deleted else "删除")

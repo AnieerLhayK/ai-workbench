@@ -15,6 +15,7 @@ from PySide6.QtPdfWidgets import QPdfView
 
 from .library import DiaryError, KINDS
 from .reports import NOTICE
+from .settings import StyleResources
 from ..app import Switch
 
 
@@ -39,7 +40,7 @@ def period_request(parent, kind):
     start = date_input(QDate.currentDate().addDays(-20 if kind == "personal" else -6))
     prompt = QTextEdit()
     prompt.setPlaceholderText("可补充这次总结关注的内容")
-    zf = QCheckBox("启用实时 zf 风格")
+    zf = QCheckBox("启用 user-style 私有风格")
     zf.setChecked(kind == "personal")
     layout.addRow("开始日期", start)
     layout.addRow("结束日期（包含当天）", end)
@@ -71,7 +72,7 @@ class Preferences(QWidget):
         self.theme.currentIndexChanged.connect(lambda: on_theme(self.theme.currentData()))
         form.addRow("外观", self.theme)
         self.fields = {}
-        for key, label in (("codex_cli", "Codex CLI"), ("prose_path", "prose.md（留空使用内置规范）"), ("zf_root", "zf skill 目录"),
+        for key, label in (("codex_cli", "Codex CLI"), ("prose_path", "prose.md（留空使用内置规范）"), ("zf_root", "user-style 同步源目录"),
                            ("staging_root", "临时任务目录"), ("model", "模型（留空沿用 Codex）")):
             field = QLineEdit(str(config.get(key, "")))
             if key == "prose_path":
@@ -85,10 +86,33 @@ class Preferences(QWidget):
         save = QPushButton("保存运行设置")
         save.clicked.connect(self.save)
         layout.addWidget(save)
-        self.message = QLabel("默认使用随软件附带的 prose 规范；自定义 prose 和 zf 资源每次生成时重新读取。")
+        self.style = StyleResources(config)
+        self.style_status = QLabel()
+        self.style_status.setWordWrap(True)
+        layout.addWidget(self.style_status)
+        self.sync_style_button = QPushButton("同步 user-style")
+        self.sync_style_button.setEnabled(not config.get("demo"))
+        self.sync_style_button.clicked.connect(self.sync_style)
+        layout.addWidget(self.sync_style_button)
+        self.refresh_style()
+        self.message = QLabel("默认使用内置 prose 规范；user-style 使用私人镜像，仅点击同步时更新。先保存源目录再同步。")
         self.message.setWordWrap(True)
         layout.addWidget(self.message)
         layout.addStretch()
+
+    def refresh_style(self):
+        status = self.style.status()
+        self.style_status.setText(status["message"] + ("\n上次同步：" + status["synced_at"] if status.get("available") else ""))
+
+    def sync_style(self):
+        try:
+            if self.fields["zf_root"].text().strip() != self.config.get("zf_root", ""):
+                raise DiaryError("请先保存 user-style 同步源目录")
+            self.style.sync()
+            self.message.setText("user-style 已同步；下次生成使用此快照。")
+        except (OSError, ValueError) as error:
+            self.message.setText("同步失败，原镜像保留：" + str(error))
+        self.refresh_style()
 
     def save(self):
         runtime = {k: w.text().strip() for k, w in self.fields.items()}
@@ -97,8 +121,10 @@ class Preferences(QWidget):
             self.message.setText("自定义 prose_path 必须为绝对路径；留空使用内置规范")
             return
         for key in ("codex_cli", "zf_root", "staging_root"):
+            if key == "zf_root" and not runtime[key]:
+                continue
             if not runtime[key] or not Path(runtime[key]).is_absolute():
-                self.message.setText(f"{key} 必须为绝对路径")
+                self.message.setText(f"{'user-style 同步源目录' if key == 'zf_root' else key} 必须为绝对路径")
                 return
         try:
             self.settings.update(runtime=runtime)
@@ -305,7 +331,7 @@ class SourcePage(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(32, 26, 32, 26)
         layout.addWidget(heading("资料来源"))
-        note = QLabel("项目资料按 Git 活动定向读取。项目集合只发现直接子目录中的 Git 项目，不递归扫描整个目录。")
+        note = QLabel("Git 集合只发现直接子项目。普通目录用于工作总结，首次保存将现有文本和 PPTX 建为背景；以后按内容变化纳入，并说明迟到材料的时间限制。")
         note.setWordWrap(True)
         layout.addWidget(note)
         self.table = QTableWidget(0, 3)
@@ -346,6 +372,7 @@ class SourcePage(QWidget):
         mode = QComboBox()
         mode.addItem("单个 Git 项目", "git")
         mode.addItem("直接子项目集合", "projects")
+        mode.addItem("普通目录（工作资料）", "directory")
         mode.setCurrentIndex(mode.findData(source.get("type", "git")))
         self.table.setCellWidget(row, 0, enabled)
         self.table.setItem(row, 1, path)
@@ -371,9 +398,9 @@ class SourcePage(QWidget):
             values.append({"id": item.data(Qt.UserRole), "path": item.text(), "enabled": self.table.cellWidget(row, 0).isChecked(),
                            "type": self.table.cellWidget(row, 2).currentData()})
         try:
-            self.settings.update(sources=values)
+            self.sources.register(values)
             self.message.setText("登记表已保存。")
-        except OSError as error:
+        except (OSError, DiaryError) as error:
             self.message.setText(str(error))
 
     def import_file(self):
@@ -432,7 +459,7 @@ class ReportPage(QWidget):
             check.setChecked(True)
             self.include[key] = check
             checks.addWidget(check)
-        self.zf = QCheckBox("zf 风格")
+        self.zf = QCheckBox("user-style 风格")
         checks.addWidget(self.zf)
         form.addLayout(checks)
         add = QPushButton("本次补充资料…")

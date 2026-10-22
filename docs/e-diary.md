@@ -23,7 +23,7 @@ python -B scripts/launch_e_diary.py --config <external-config.json>
 Installed environments also expose `e-diary --demo` / `e-diary --config ...`.
 Copy `examples/e-diary.config.example.json` outside source and replace its
 placeholders with absolute paths. Configuration identifies the private data
-directory, existing Codex executable, optional custom prose file, live zf directory, approved
+directory, existing Codex executable, optional custom prose file, user-style synchronization source, approved
 staging directory and two initial source roots (one Git project and one collection
 of immediate child Git projects). The first real opening is empty; demo remains
 in memory and never reads real sessions, source roots or style resources.
@@ -59,6 +59,39 @@ activity and selected changed text files. A collection discovers immediate Git
 children only. It does not recursively inventory the whole workspace or projects
 tree. Archive/dependency/build paths and links are excluded. Current file text and
 uncommitted status provide context, not proof that work was completed in a period.
+
+A **普通目录（工作资料）** source also accepts a non-Git research folder. Its first
+registration captures existing UTF-8 text and PPTX content fingerprints as background;
+only later new or changed content becomes delayed evidence in a work summary.
+Saving an unchanged registration preserves that baseline and successful coverage.
+Moving a source or changing its mode establishes a new baseline. The scan does not
+follow links, visits at most 2,000 entries / 200 accepted files, reads at most 8 MB
+per file and 16 MB per scan, and extracts bounded slide and notes text from PPTX.
+DTD/entity XML and damaged presentations are rejected with coverage warnings;
+images are not interpreted as experimental results.
+
+A dedicated 40,000-character laboratory slice precedes general session evidence.
+Changed material takes priority over unchanged background. A successful normal
+work summary acknowledges only adopted file versions; failure, cancellation and
+comparison generation leave coverage unchanged. Missing or truncated material
+leaves warnings. Discovery/update time is not the date of the experiment: a report
+must identify material that concerns earlier work or whose activity date is unknown.
+
+Development/work summaries follow coherent work threads, results, unfinished or
+shelved work, broad implementation ideas and significant technical decisions.
+They use bounded prior diary and report context (up to 180 days, 20 diaries and
+8 same-type reports, 24,000 characters) to understand continuing priorities;
+generated history is background rather than independent factual proof. Experience
+and attitude follow the user's own descriptions. Conservative inferences from
+diaries are qualified; specific outcomes and metrics require direct evidence.
+The body normally has 600–2,000 non-whitespace characters, may be shorter when
+materials are insufficient, and remains within 2,000 for merged periods too.
+Technical inventories, commands and test counts belong in evidence, not the body.
+
+**生成对比版** creates a separate development/work summary for the same period,
+retains the original, and advances neither cycle nor directory coverage. Existing
+**重新生成** retains its revision-based editing behavior. Compare actual reports
+before accepting a new writing workflow; mechanical tests do not establish prose quality.
 
 Codex history, including archived threads, uses app-server `thread/list` and paginated `thread/turns/list` without
 resuming sessions. Missing/incompatible history interfaces appear in coverage
@@ -107,20 +140,35 @@ custom files fail rather than silently changing the requested discipline. The
 installer no longer requires an external prose file. Private character resources
 remain external and are not bundled.
 
-Every real generation rereads the selected prose file and, when enabled, the zf skill and
-its selected references. Personal reviews enable zf by default; other tasks offer
-an explicit option. Resource fingerprints are audit metadata rather than a pinned
-style version. Missing required resources stop the task. User facts, evidence and
-requested formats take precedence over style. Personal reviews emphasize the
-user's own diary descriptions of mood and motivation, avoid diagnosis and invented
-mood scores, and do not force a diary percentage or a standard advice section.
+Every real generation rereads the selected prose file. Optional **user-style** uses
+an independent private mirror under `data_root/user-style`, never the external
+source directly. Settings shows the source, mirror availability and last sync.
+Save the source directory, then click **同步 user-style** to accept updates.
+Opening or generating never synchronizes. The existing `zf_root` configuration
+key remains a compatible synchronization-source setting, and installer
+`-UserStyleSource` accepts the old `-ZfRoot` alias.
+
+Synchronization copies SKILL.md and its recursively referenced text resources
+from references/prompts, excluding raw corpus and maintenance artifacts. A bounded,
+validated immutable snapshot is committed by one atomic pointer replacement.
+Failure preserves the previous mirror. Each generation reads one snapshot and
+records resource fingerprints. Editing a mirror invalidates it; change the source
+and explicitly synchronize instead. No junction or character-system write is
+needed. Initial personal generation requires the first manual sync; missing
+resources stop generation with an actionable error. Personal reviews enable
+user-style by default; other tasks retain an explicit option.
+
+User facts, evidence and requested formats take precedence over style. Personal
+reviews emphasize the user's own diary descriptions of mood and motivation,
+avoid diagnosis and invented mood scores, and do not force a diary percentage
+or a standard advice section.
 
 ## Topic packages
 
 Built-in topics are awards, party affairs, research meetings and course completion.
 **管理主题** edits goals/boundaries and default prompts, adds new topics or removes
 them without deleting previous packages. Select dates, diary/development/work
-sources, an optional zf mode, supplementary files and an output directory. Prompts
+sources, an optional user-style mode, supplementary files and an output directory. Prompts
 have no arbitrary 500-character limit. A quoted absolute path or a standalone
 absolute-path line authorizes additional material for that task only; directories
 contribute immediate text children, not recursive scans. Use the registry to grant
@@ -144,6 +192,9 @@ The DiaryLibrary, Sources, GenerationJobs, Cycles and Reports Modules own their
 respective behavior. Windows only compose and observe them. Real, demo and
 controlled generation Adapters cross the same Interface. Worker results return
 through Qt signals; provider output is not persisted as a diagnostic log.
+Saved reports retain pending coverage bookkeeping if settings persistence fails.
+Reopening or submitting again retries that acknowledgement against the saved
+entry, without regenerating the same automatic report.
 
 Run `tests/test_e_diary.py` and the complete package suite with staging-backed
 temporary directories. Verify diary recovery/conflicts, source timing/branching,

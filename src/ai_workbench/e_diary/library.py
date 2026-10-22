@@ -214,6 +214,16 @@ class DiaryLibrary:
         return self.read(entry_id)
 
     @synchronized
+    def acknowledge_generation(self, entry_id):
+        """Clear a saved generation's recovery marker without creating a text revision."""
+        self.refresh()
+        record = deepcopy(self.records[entry_id])
+        record["provenance"].pop("pending_coverage", None)
+        if self.root:
+            atomic_json(self._directory(entry_id) / "record.json", record)
+        self.records[entry_id] = record
+
+    @synchronized
     def _flag(self, entry_id, deleted):
         record = deepcopy(self.records[entry_id])
         record.update(deleted=deleted, updated_at=now())

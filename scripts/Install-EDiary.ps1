@@ -4,7 +4,7 @@ param(
     [Parameter(Mandatory)][string]$Pythonw,
     [Parameter(Mandatory)][string]$CodexCli,
     [string]$ProsePath = "",
-    [Parameter(Mandatory)][string]$ZfRoot,
+    [Alias('ZfRoot')][string]$UserStyleSource = "",
     [Parameter(Mandatory)][string]$StagingRoot,
     [Parameter(Mandatory)][string[]]$SourceRoots
 )
@@ -14,17 +14,17 @@ if ($ProsePath) { $requiredFiles += $ProsePath }
 foreach ($file in $requiredFiles) {
     if (-not [IO.Path]::IsPathRooted($file) -or -not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "Missing file: $file" }
 }
-foreach ($directory in @($DataRoot, $DesktopRoot, $ZfRoot, $StagingRoot) + $SourceRoots) {
+foreach ($directory in @($DataRoot, $DesktopRoot, $StagingRoot) + $SourceRoots + @($UserStyleSource | Where-Object { $_ })) {
     if (-not [IO.Path]::IsPathRooted($directory)) { throw 'All paths must be absolute.' }
 }
 if (-not (Test-Path -LiteralPath $DesktopRoot -PathType Container)) { throw 'Desktop root does not exist.' }
-if (-not (Test-Path -LiteralPath (Join-Path $ZfRoot 'SKILL.md'))) { throw 'zf SKILL.md is missing.' }
+if ($UserStyleSource -and -not (Test-Path -LiteralPath (Join-Path $UserStyleSource 'SKILL.md'))) { throw 'user-style source SKILL.md is missing.' }
 $configPath = Join-Path $DataRoot 'config.json'
 $shortcutPath = Join-Path $DesktopRoot 'e-Diary.lnk'
 if ((Test-Path -LiteralPath $configPath) -or (Test-Path -LiteralPath $shortcutPath)) { throw 'Existing deployment; inspect before changing it.' }
 [void][IO.Directory]::CreateDirectory($DataRoot)
 [void][IO.Directory]::CreateDirectory($StagingRoot)
-@{data_root=$DataRoot;codex_cli=$CodexCli;prose_path=$ProsePath;zf_root=$ZfRoot;staging_root=$StagingRoot;source_roots=$SourceRoots;read_codex=$true} |
+@{data_root=$DataRoot;codex_cli=$CodexCli;prose_path=$ProsePath;zf_root=$UserStyleSource;staging_root=$StagingRoot;source_roots=$SourceRoots;read_codex=$true} |
     ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $configPath -Encoding utf8
 $packageRoot = Split-Path $PSScriptRoot -Parent
 $shell = New-Object -ComObject WScript.Shell
