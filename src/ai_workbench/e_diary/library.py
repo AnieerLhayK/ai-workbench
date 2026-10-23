@@ -152,6 +152,14 @@ class DiaryLibrary:
         return record
 
     @synchronized
+    def metadata(self, kind=None):
+        """Newest-first active descriptor copies, without reading body files."""
+        self.refresh()
+        return sorted((deepcopy(record) for record in self.records.values()
+                       if not record.get("deleted") and (kind is None or record["kind"] == kind)),
+                      key=lambda record: (record["date"], record["updated_at"]), reverse=True)
+
+    @synchronized
     def query(self, kind=None, text="", month="", deleted=False, start=None, end=None):
         self.refresh()
         found = []

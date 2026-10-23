@@ -290,29 +290,46 @@ class Sources:
             else:
                 self.session_warnings.append("会话列表达到分页上限，未读取更早页面")
 
-    def _history(self, request):
+    def _history(self, request, cancelled, warnings):
         start = datetime.fromisoformat(request["start"]).date()
         lower = start - timedelta(days=180)
         docs, budget = [], 24000
         for kind, limit in (("diary", 20), (request["kind"], 8)):
-            records = self.library.query(kind=kind, start=lower.isoformat(), end=(start-timedelta(days=1)).isoformat())
+            # Select descriptors before reading bodies: the limits bound actual reads.
+            records = [record for record in self.library.metadata(kind=kind)
+                       if lower.isoformat() <= record["date"] < start.isoformat()]
+            if len(records) > limit:
+                warnings.append("历史背景达到篇数上限，部分旧记录未纳入")
             for record in records[:limit]:
+                if cancelled.is_set():
+                    raise DiaryError("任务已取消")
+                if not budget:
+                    warnings.append("历史背景达到 24000 字符预算，部分旧记录未纳入")
+                    break
+                record = self.library.read(record["id"])
                 text = record["body"][:min(2400, budget)]
                 if not text:
-                    break
+                    continue
+                if len(text) < len(record["body"]):
+                    warnings.append("历史背景正文已截短，仅用于有依据的有限理解")
                 budget -= len(text)
                 docs.append({"id": "history:" + record["id"], "title": record["title"], "body": text,
                              "at": record["date"], "origin": kind, "evidence_role": "historical_background",
+                             "role": "user" if kind == "diary" else "generated",
                              "timing": "报告周期之前的长期背景；历史生成报告只辅助理解，不能独立证明事实"})
         return docs
 
     def collect(self, request, cancelled, progress):
+        if cancelled.is_set():
+            raise DiaryError("任务已取消")
         documents, warnings = [], []
         directory_documents, directory_sources = [], {}
         start, end = request["start"], request["end"]
         included = request.get("include", ["diary", "development", "work"])
         for kind in included:
-            for record in self.library.query(kind=kind):
+            for record in self.library.metadata(kind=kind):
+                if cancelled.is_set():
+                    raise DiaryError("任务已取消")
                 period = record.get("period")
                 if period:
                     if period["start"] >= end or period["end"] <= start:
@@ -321,20 +338,25 @@ class Sources:
                     continue
                 if record["id"] == request.get("comparison_of"):
                     continue
+                record = self.library.read(record["id"])
                 documents.append({"id": record["id"], "title": record["title"], "body": record["body"],
                     "at": record["date"], "origin": kind,
+                    "role": "user" if kind == "diary" else "generated",
                     "evidence_role": "self_report" if kind == "diary" else "generated_context"})
         if self.config.get("demo"):
             return {"documents": documents, "warnings": ["演示模式仅使用内存示例，不读取真实资料"], "start": start, "end": end}
-        history = self._history(request) if request["kind"] in ("development", "work") else []
-        if request["kind"] in ("development", "work") and not history:
+        history = self._history(request, cancelled, warnings) if request["kind"] in ("development", "work", "personal") else []
+        if request["kind"] in ("development", "work", "personal") and not history:
             warnings.append("未找到本期之前的长期回顾背景；不能据此断言长期取向或变化")
         for item in self.settings.data["imports"]:
             docs = (load_json(self.library.root / "imports" / (item["id"] + ".json"))["documents"]
                     if self.library.root else self.memory_imports[item["id"]])
             for doc in docs:
                 if in_period(doc.get("at"), start, end) or not doc.get("at"):
-                    documents.append(dict(doc, timing="原始消息时间" if doc.get("at") else "时间未知，仅作背景，不认定为本期活动"))
+                    evidence = dict(doc, timing="原始消息时间" if doc.get("at") else "时间未知，仅作背景，不认定为本期活动")
+                    if request["kind"] == "personal":
+                        evidence["evidence_role"] = "self_report" if doc.get("role") == "user" and in_period(doc.get("at"), start, end) else "auxiliary_context"
+                    documents.append(evidence)
         if request["kind"] != "personal" and self.config.get("read_codex", True):
             progress("读取 Codex 历史")
             try:
@@ -410,12 +432,20 @@ class Sources:
             if doc["changed"] and doc["complete"]:
                 directory_sources[doc["source_id"]]["files"][doc["relative"]] = doc["fingerprint"]
         unique, count = {}, 0
-        for doc in [*laboratory, *history, *documents]:
+        if request["kind"] == "personal":
+            primary = [doc for doc in documents if doc.get("evidence_role") == "self_report"]
+            auxiliary = [doc for doc in documents if doc.get("evidence_role") != "self_report"]
+            ordered = [*primary, *history, *auxiliary]
+        else:
+            ordered = [*laboratory, *history, *documents]
+        for doc in ordered:
             if doc["id"] in unique:
                 continue
             if count + len(doc["body"]) > 180000:
                 warnings.append("资料达到单次 18 万字符上限，部分材料未纳入；可缩小范围后生成")
-                break
+                if request["kind"] != "personal" or count >= 180000:
+                    break
+                doc = dict(doc, body=doc["body"][:180000-count], coverage_limit="正文因单次材料预算截短，不能推定未读部分")
             unique[doc["id"]] = doc
             count += len(doc["body"])
         return {"documents": list(unique.values()), "warnings": list(dict.fromkeys(warnings)), "start": start, "end": end,

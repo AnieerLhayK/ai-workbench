@@ -188,3 +188,14 @@ factual evidence. Validate prose quality with actual user comparison after tests
 The saved descriptor is the generation commit point. Keep failed coverage
 bookkeeping as a durable pending acknowledgement on that entry; recover it
 idempotently on reopening or submission, without calling the model again.
+
+Personal reviews own a separate humane writing contract. Prioritize current
+self-reports, then bounded prior diaries/reviews, then generated/assistant
+background. Select historical descriptors through DiaryLibrary's locked metadata
+snapshot before reading bodies, preserving concurrent editor saves; disclose
+omissions and truncation. Earlier feelings and generated interpretations are
+not independent evidence of the present. Preserve ambiguity, optional advice
+and the reader's ability to disagree; style cannot override these requirements.
+Use synthetic evidence and controlled generation for automated validation.
+When the user defers real acceptance to the next due cycle, do not generate
+an acceptance report, advance coverage or change scheduling for verification.

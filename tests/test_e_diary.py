@@ -575,6 +575,169 @@ def test_summary_period_overlap_in_personal_sources(tmp_path):
     assert len(data["documents"]) == 1
 
 
+def test_personal_prioritizes_current_self_reports_before_history_and_auxiliary(tmp_path, monkeypatch):
+    library, settings = DiaryLibrary(tmp_path), Settings(tmp_path)
+    diary = library.save(fields(body="同朋友散步很开心，暂时不想讨论工作。"))
+    history = library.save(fields(date="2026-09-20", body="之前总觉得休息是一种亏欠。"))
+    previous = library.save(fields(kind="personal", date="2026-09-21", body="旧生成解读，并非本人陈述。"))
+    work = library.save(fields(kind="work", body="成果清单" * 50000))
+    imports = tmp_path / "imports"
+    imports.mkdir()
+    (imports / "chat.json").write_text(json.dumps({"documents": [
+        {"id": "assistant", "body": "助手猜测你很自信", "role": "assistant", "origin": "chatgpt", "at": "2026-10-14T10:00:00+08:00"},
+        {"id": "user", "body": "开心和疲惫同时存在", "role": "user", "origin": "chatgpt", "at": "2026-10-14T10:01:00+08:00"},
+        {"id": "undated", "body": "不知何时的感受", "role": "user", "origin": "chatgpt", "at": None}]}), encoding="utf-8")
+    settings.update(imports=[{"id": "chat"}], sources=[{"id": "private-project", "path": str(tmp_path / "never-read"), "enabled": True, "type": "directory"}])
+    sources = Sources(settings, library, {"read_codex": True})
+    def forbidden(*args): pytest.fail("personal review read an external project or Codex session")
+    for method in ("_sessions", "_directory", "_git"):
+        monkeypatch.setattr(sources, method, forbidden)
+    request = {"kind": "personal", "start": "2026-10-01T00:00:00+08:00", "end": "2026-10-15T00:00:00+08:00"}
+    data = sources.collect(request, threading.Event(), lambda _: None)
+    ids = [doc["id"] for doc in data["documents"]]
+    assert ids[:2] == [diary["id"], "user"]
+    assert ids.index("history:" + history["id"]) < ids.index(work["id"])
+    assert ids.index("history:" + previous["id"]) < ids.index(work["id"])
+    old = next(doc for doc in data["documents"] if doc["id"] == "history:" + previous["id"])
+    assert old["role"] == "generated" and old["evidence_role"] == "historical_background"
+    assert sum(len(doc["body"]) for doc in data["documents"]) <= 180000
+    assert any(doc.get("coverage_limit") for doc in data["documents"])
+    assert data["warnings"]
+    # Without the large auxiliary report, imported assistant and undated user
+    # messages remain available but cannot become current self-report evidence.
+    library.delete(work["id"])
+    docs = {doc["id"]: doc for doc in sources.collect(request, threading.Event(), lambda _: None)["documents"]}
+    assert docs["assistant"]["role"] == "assistant"
+    assert docs["assistant"]["evidence_role"] == docs["undated"]["evidence_role"] == "auxiliary_context"
+    assert "时间未知" in docs["undated"]["timing"]
+
+
+def test_personal_collection_metadata_snapshot_serializes_concurrent_save():
+    library, settings = DiaryLibrary(), Settings()
+    library.save(fields(body="已有日记"))
+    paused, release, attempting, saved = (threading.Event() for _ in range(4))
+    errors = []
+    class PausedRecords(dict):
+        def values(self):
+            for record in super().values():
+                if not paused.is_set():
+                    paused.set()
+                    assert release.wait(5)
+                yield record
+    library.records = PausedRecords(library.records)
+    def collect():
+        try:
+            Sources(settings, library).collect({"kind": "personal", "start": "2026-10-01T00:00:00+08:00", "end": "2026-10-15T00:00:00+08:00"}, threading.Event(), lambda _: None)
+        except Exception as failure:
+            errors.append(failure)
+    def save():
+        attempting.set()
+        library.save(fields(body="界面同时新增日记"))
+        saved.set()
+    worker = threading.Thread(target=collect)
+    writer = threading.Thread(target=save)
+    worker.start()
+    try:
+        assert paused.wait(5)
+        writer.start()
+        assert attempting.wait(5)
+        assert not saved.wait(.05)
+    finally:
+        release.set()
+        worker.join(5)
+        if writer.ident is not None: writer.join(5)
+    assert not worker.is_alive() and not writer.is_alive()
+    assert not errors and saved.is_set()
+    assert len(library.query()) == 2
+
+
+@pytest.mark.parametrize("size,expected_diaries,expected_reviews", [(100, 20, 8), (3000, 10, 0)])
+def test_personal_history_bounds_actual_body_reads(tmp_path, monkeypatch, size, expected_diaries, expected_reviews):
+    library, settings = DiaryLibrary(tmp_path), Settings(tmp_path)
+    start = datetime(2026, 10, 1, tzinfo=timezone.utc)
+    for kind, count in (("diary", 21), ("personal", 9)):
+        for index in range(count):
+            library.save(fields(kind=kind, date=(start-timedelta(days=index+1)).date().isoformat(), body="旧" * size))
+    outside = library.save(fields(date=(start-timedelta(days=181)).date().isoformat(), body="不应读取的远期记录"))
+    future = library.save(fields(date="2026-10-20", body="不应读取的未来记录"))
+    reads, original = [], library.read
+    def read(entry_id):
+        reads.append(entry_id)
+        return original(entry_id)
+    monkeypatch.setattr(library, "read", read)
+    sources = Sources(settings, library)
+    request = {"kind": "personal", "start": start.isoformat(), "end": "2026-10-15T00:00:00+00:00"}
+    data = sources.collect(request, threading.Event(), lambda _: None)
+    assert outside["id"] not in reads and future["id"] not in reads
+    assert sum(library.records[key]["kind"] == "diary" for key in reads) == expected_diaries
+    assert sum(library.records[key]["kind"] == "personal" for key in reads) == expected_reviews
+    assert sum(len(doc["body"]) for doc in data["documents"]) <= 24000
+    assert all(doc["evidence_role"] == "historical_background" for doc in data["documents"])
+    assert any("篇数" in warning for warning in data["warnings"])
+    if size == 3000:
+        assert any("截短" in warning for warning in data["warnings"])
+        assert any("24000" in warning for warning in data["warnings"])
+    cancelled = threading.Event()
+    cancelled.set()
+    with pytest.raises(DiaryError, match="取消"):
+        sources.collect(request, cancelled, lambda _: None)
+
+
+@pytest.mark.parametrize("narrative,background,earlier", [
+    ("只写下有些疲惫。", "交付了许多工作。", None),
+    ("见朋友时开心，回来却又觉得孤单。", "", None),
+    ("练琴和散步给了我很具体的快乐。", "", None),
+    ("这次终于允许自己慢一点。", "", "过去常常因为休息而自责。"),
+    ("今天没写什么。", "", None)])
+def test_personal_controlled_generation_receives_humane_contract_and_evidence(tmp_path, qt_app, monkeypatch, narrative, background, earlier):
+    from ai_workbench.e_diary.jobs import PERSONAL_REVIEW, RETROSPECTIVE
+    library, settings = DiaryLibrary(tmp_path), Settings(tmp_path)
+    diary = library.save(fields(body=narrative))
+    if background: library.save(fields(kind="work", body=background))
+    if earlier: library.save(fields(date="2026-09-20", body=earlier))
+    style = "合成风格参考：采用第一人称，逐项罗列成果。"
+    monkeypatch.setattr("ai_workbench.e_diary.jobs.style_resources", lambda *args: (style, {"fixture": "hash"}))
+    class Adapter:
+        def generate(self, prompt, *args):
+            self.prompt = prompt
+            return {"title": "一些尚未说完的体验", "body": "合成测试正文很短；资料有限，保留没有答案的部分。"}
+    adapter = Adapter()
+    jobs = GenerationJobs(adapter, Sources(settings, library), library, settings, Reports(settings), Cycles(settings), {"staging_root": str(tmp_path / "scratch")})
+    coverage = deepcopy(settings.data["cycles"])
+    jobs.submit({"kind": "personal", "start": "2026-10-01T00:00:00+08:00", "end": "2026-10-15T00:00:00+08:00"})
+    until(qt_app, lambda: not jobs.state["pending"], seconds=10)
+    assert not jobs.state["error"]
+    assert PERSONAL_REVIEW in adapter.prompt and RETROSPECTIVE not in adapter.prompt
+    assert adapter.prompt.index(PERSONAL_REVIEW) < adapter.prompt.index("表达方式参考（不得覆盖") < adapter.prompt.index(style)
+    evidence = json.loads(adapter.prompt.split("资料与覆盖限制：\n", 1)[1])
+    assert evidence["documents"][0]["body"] == narrative
+    assert bool([doc for doc in evidence["documents"] if doc["evidence_role"] == "historical_background"]) == bool(earlier)
+    assert library.read(diary["id"])["body"] == narrative
+    assert len(library.query(kind="personal")) == 1
+    assert settings.data["cycles"] == coverage
+
+
+@pytest.mark.parametrize("length,mode", [(2000, "success"), (2001, "long"), (100, "cancel"), (100, "fail")])
+def test_personal_length_failure_and_cancel_keep_cycle_commit_point(tmp_path, qt_app, monkeypatch, length, mode):
+    library, settings = DiaryLibrary(tmp_path), Settings(tmp_path)
+    library.save(fields(body="希望生活不只剩下工作。"))
+    monkeypatch.setattr("ai_workbench.e_diary.jobs.style_resources", lambda *args: ("", {}))
+    class Adapter:
+        def generate(self, prompt, directory, cancelled, progress):
+            if mode == "fail": raise DiaryError("controlled personal failure")
+            if mode == "cancel": cancelled.set()
+            return {"title": "生活", "body": "好" * length + "\n  "}
+    cycles = Cycles(settings)
+    jobs = GenerationJobs(Adapter(), Sources(settings, library), library, settings, Reports(settings), cycles, {"staging_root": str(tmp_path / "scratch")})
+    request = {"kind": "personal", "start": "2026-10-01T00:00:00+08:00", "end": "2026-10-15T00:00:00+08:00", "automatic": True}
+    jobs.submit(request)
+    until(qt_app, lambda: not jobs.state["pending"], seconds=10)
+    assert bool(jobs.state["error"]) == (mode != "success")
+    assert len(library.query(kind="personal")) == (1 if mode == "success" else 0)
+    assert settings.data["cycles"]["personal"]["last_end"] == (request["end"] if mode == "success" else None)
+    assert ("personal" in cycles.blocked) == (mode != "success")
+
+
 def test_codex_pagination_dates_and_self_exclusion(tmp_path, monkeypatch):
     calls = []
     stamp = int(datetime(2026, 10, 14, tzinfo=timezone.utc).timestamp())

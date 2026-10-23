@@ -159,9 +159,33 @@ resources stop generation with an actionable error. Personal reviews enable
 user-style by default; other tasks retain an explicit option.
 
 User facts, evidence and requested formats take precedence over style. Personal
-reviews emphasize the user's own diary descriptions of mood and motivation,
-avoid diagnosis and invented mood scores, and do not force a diary percentage
-or a standard advice section.
+reviews have their own writing requirements: address the reader as "you", with
+warmth and honesty, connecting a few important experiences rather than listing
+days or measuring life through work output. Relationships, interests, rest, joy,
+conflicting feelings and unresolved concerns can each be a main thread when
+supported by the records. Interpretations must remain grounded and open to the
+reader's disagreement; no diagnosis, personality labels or invented feelings.
+Do not turn fatigue into compulsory growth or replace understanding with generic
+reassurance. Advice is optional, brief and never a fixed action checklist.
+
+Personal evidence uses the existing 180000-character task budget in this order:
+current diaries and dated imported user messages, bounded historical background,
+then auxiliary material such as development/work reports and assistant messages.
+Earlier feelings are not evidence of the current state. Generated reports and
+assistant messages cannot independently prove the user's feelings, motives or
+achievements. History covers the previous 180 days, up to 20 diaries and 8 personal
+reviews, with a combined 24000-character ceiling and at most 2400 per record.
+Source roles, periods and omitted/truncated material remain visible in the
+evidence; explain material limitations briefly rather than throughout the prose.
+Personal tasks do not scan registered project sources or Codex sessions.
+
+Normal personal prose is 600–2000 characters; insufficient evidence may produce a
+shorter response with a brief explanation. There is no enforced minimum; bodies
+over 2000 non-whitespace characters are rejected before saving, including merged
+catch-up periods. A style snapshot controls expression, not these requirements.
+Personal reviews retain the existing generation controls and scheduling.
+Automated checks use synthetic evidence without changing private coverage;
+actual narrative quality remains a separate user assessment.
 
 ## Topic packages
 
