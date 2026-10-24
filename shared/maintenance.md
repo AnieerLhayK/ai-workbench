@@ -199,3 +199,9 @@ and the reader's ability to disagree; style cannot override these requirements.
 Use synthetic evidence and controlled generation for automated validation.
 When the user defers real acceptance to the next due cycle, do not generate
 an acceptance report, advance coverage or change scheduling for verification.
+
+Provider control commands and post-command verification have distinct deadlines.
+Allow the provider's documented graceful shutdown budget before verifying exit;
+a fixed short CLI timeout must not prevent the provider from reaching shutdown.
+Recheck process identity after command errors and expose only safe categories,
+never raw command lines, profile paths or captured provider output.

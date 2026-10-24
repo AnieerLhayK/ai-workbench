@@ -6,6 +6,9 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+# Allow the provider's 180-second graceful drain plus CLI initialization.
+HERMES_STOP_COMMAND_TIMEOUT = 240
+
 HIDDEN = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 DETACHED = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
 
@@ -112,6 +115,12 @@ class WindowsProcesses:
             self.kill_exact(identity)
         else:
             env = dict(os.environ, HERMES_HOME=self.config["hermes_home"], PYTHONIOENCODING="utf-8")
-            result = subprocess.run([self.config["hermes_exe"], "gateway", "stop"], cwd=self.config["hermes_home"], env=env, capture_output=True, timeout=25, creationflags=HIDDEN)
-            if result.returncode:
-                raise RuntimeError("Hermes 停止命令失败")
+            try:
+                result = subprocess.run([self.config["hermes_exe"], "gateway", "stop"], cwd=self.config["hermes_home"], env=env, capture_output=True, timeout=HERMES_STOP_COMMAND_TIMEOUT, creationflags=HIDDEN)
+            except subprocess.TimeoutExpired:
+                # The command may have completed its stop before a helper timed out.
+                if self.identity(identity.pid) is None:
+                    return
+                raise RuntimeError(f"Hermes 停止命令超时（{HERMES_STOP_COMMAND_TIMEOUT} 秒）；请核对后台状态后重试") from None
+            if result.returncode and self.identity(identity.pid) is not None:
+                raise RuntimeError(f"Hermes 停止命令失败（退出码 {result.returncode}）")

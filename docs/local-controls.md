@@ -63,8 +63,13 @@ checked against its current profile runtime record. Stop uses `gateway stop`.
 Connection problems do not stop the process. Auth remains with each provider;
 this application does not read, export or reset credentials.
 
-Startup waits at most 120 seconds, or 600 when browser authorization is requested;
-stop verification waits 30 seconds. A timed-out launch is not retried automatically.
+Startup waits at most 120 seconds, or 600 when browser authorization is requested.
+Hermes' stop command allows up to 240 seconds for CLI initialization and the
+provider's graceful drain. The pending switch remains disabled while the detached
+worker keeps publishing its heartbeat. Stop verification gets a separate 30-second
+budget after the command returns; provider shutdown time does not consume it.
+A command timeout is reported without raw arguments/output. If a fresh identity
+probe confirms the requested process already exited, the stop succeeds. A timed-out launch is not retried automatically.
 Only this operation's unready launcher can be cancelled. Remaining live processes
 stay reflected in the switch. Failed stop keeps the actual running state.
 

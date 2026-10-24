@@ -367,3 +367,73 @@ def test_atomic_state_retries_windows_reader_lock(tmp_path, monkeypatch):
     atomic_json(tmp_path / "state.json", {"running": False})
     assert len(attempts) == 2
     assert read_json(tmp_path / "state.json") == {"running": False}
+
+
+def test_hermes_stop_allows_graceful_shutdown_beyond_25_seconds(tmp_path, monkeypatch):
+    """Replay the GUI's gateway-stop timeout through the real worker/backend seam."""
+    import subprocess
+    worker, _, _ = setup(tmp_path, "hermes")
+    backend = WindowsProcesses({"hermes_exe": "hermes.exe", "hermes_home": str(tmp_path)})
+    target = Identity(90, "created", "pythonw.exe", "-m hermes_cli.main gateway run")
+    alive = [True]
+    monkeypatch.setattr(backend, "discover", lambda tool: target if alive[0] else None)
+    monkeypatch.setattr(backend, "identity", lambda pid: target if alive[0] else None)
+    monkeypatch.setattr(backend, "matches", lambda tool, identity: identity == target)
+    def slow_stop(command, **kwargs):
+        if kwargs["timeout"] < 30:
+            raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+        alive[0] = False
+        return subprocess.CompletedProcess(command, 0)
+    monkeypatch.setattr("ai_workbench.windows.subprocess.run", slow_stop)
+    worker.backend = backend
+    worker.probe()
+    worker.request({"id": "stop-timeout", "running": False})
+    worker.probe()
+    assert worker.state["completed_request"] == "stop-timeout"
+    assert worker.state["phase"] == "stopped", worker.state["error"]
+    assert not worker.state["running"]
+    assert worker.state["error"] is None
+
+
+def test_stop_verification_budget_starts_after_provider_command(tmp_path):
+    worker, backend, clock = setup(tmp_path, "hermes")
+    backend.target = backend.identity(90)
+    def slow_stop(tool, identity):
+        clock[0] += 60
+    backend.stop = slow_stop
+    worker.request({"id": "slow-stop", "running": False})
+    worker.probe()
+    assert worker.state["phase"] == "stopping"
+    backend.target = None
+    worker.probe()
+    assert worker.state["phase"] == "stopped"
+    assert worker.state["error"] is None
+
+
+@pytest.mark.parametrize("already_stopped", [False, True])
+def test_hermes_stop_timeout_preserves_observed_state_and_safe_error(tmp_path, monkeypatch, already_stopped):
+    import subprocess
+    worker, _, _ = setup(tmp_path, "hermes")
+    backend = WindowsProcesses({"hermes_exe": "private-path/hermes.exe", "hermes_home": str(tmp_path)})
+    target = Identity(90, "created", "pythonw.exe", "-m hermes_cli.main gateway run")
+    alive = [True]
+    monkeypatch.setattr(backend, "discover", lambda tool: target if alive[0] else None)
+    monkeypatch.setattr(backend, "identity", lambda pid: target if alive[0] else None)
+    monkeypatch.setattr(backend, "matches", lambda tool, identity: identity == target)
+    def timeout(command, **kwargs):
+        alive[0] = not already_stopped
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"], output=b"private provider output")
+    monkeypatch.setattr("ai_workbench.windows.subprocess.run", timeout)
+    worker.backend = backend
+    worker.probe()
+    worker.request({"id": "stop-timeout", "running": False})
+    worker.probe()
+    assert worker.state["running"] is (not already_stopped)
+    if already_stopped:
+        assert worker.state["phase"] == "stopped"
+        assert worker.state["error"] is None
+    else:
+        assert worker.state["phase"] == "failed"
+        assert "240" in worker.state["error"]
+        assert "private" not in worker.state["error"]
+        assert "Command" not in worker.state["error"]

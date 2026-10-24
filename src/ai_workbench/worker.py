@@ -112,6 +112,8 @@ class ToolWorker:
             else:
                 self.target = identity
                 self.backend.stop(self.tool, identity)
+                # Verification gets its own deadline after the provider command.
+                self.operation["started"] = self.clock()
         except Exception as error:
             self._finish(request.get("id"), self.state["running"], str(error))
 
