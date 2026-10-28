@@ -13,6 +13,7 @@ from collections import deque
 from xml.etree import ElementTree
 
 from ..storage import atomic_json
+from ..personal_archive import query as query_archive
 from .codex import AppServer
 from .library import DiaryError, digest, load_json, now, is_link
 
@@ -216,10 +217,12 @@ class Sources:
                  "at": end, "origin": "git", "path": str(root)}]
         for name in list(dict.fromkeys(names))[:30]:
             relative = Path(name.strip())
-            if relative.is_absolute() or any(p.lower() in EXCLUDED or p == ".." for p in relative.parts):
+            if relative.drive or relative.root or relative.is_absolute() or any(p.lower() in EXCLUDED or p == ".." for p in relative.parts):
                 continue
             path = root / relative
             if any(is_link(p) for p in [path, *list(path.parents)[:len(relative.parts)]]):
+                continue
+            if not path.resolve().is_relative_to(root.resolve()):
                 continue
             if path.is_file() and path.suffix.lower() in TEXT_TYPES and path.stat().st_size < 100_000:
                 docs.append({"id": "file:" + str(path), "title": str(relative),
@@ -431,21 +434,46 @@ class Sources:
             lab_count += len(doc["body"])
             if doc["changed"] and doc["complete"]:
                 directory_sources[doc["source_id"]]["files"][doc["relative"]] = doc["fingerprint"]
+        archive_documents = []
+        use_archive = request["kind"] == "personal" or (request["kind"] == "report" and request.get("personal_archive", False))
+        if use_archive:
+            archive_root = self.config.get("personal_archive_root")
+            if archive_root:
+                progress("查询已确认个人档案")
+                search = "\n".join([request.get("prompt", ""), json.dumps(request.get("topic", {}), ensure_ascii=False),
+                    *[d["title"] + "\n" + d["body"] for d in documents if d.get("role") == "user"]])
+                archive = query_archive(archive_root, search, period=(start, end))
+                warnings.extend(archive["warnings"])
+                for record in archive["records"]:
+                    archive_documents.append({"id": "archive:" + record["id"], "title": record["title"],
+                        "body": json.dumps(record, ensure_ascii=False), "at": record.get("validity", {}).get("from"),
+                        "origin": "personal_archive", "role": "owner_confirmed", "evidence_role": "long_term_context",
+                        "claim_kind": record["kind"], "fingerprint": record["fingerprint"], "path": record["path"],
+                        "validity": record.get("validity", {}),
+                        "timing": record["timing"]})
+            else:
+                warnings.append("尚未配置个人档案；本次没有档案背景，不能据此推断个人事实")
         unique, count = {}, 0
         if request["kind"] == "personal":
             primary = [doc for doc in documents if doc.get("evidence_role") == "self_report"]
             auxiliary = [doc for doc in documents if doc.get("evidence_role") != "self_report"]
-            ordered = [*primary, *history, *auxiliary]
+            ordered = [*primary, *archive_documents, *history, *auxiliary]
         else:
-            ordered = [*laboratory, *history, *documents]
+            ordered = [*laboratory, *archive_documents, *history, *documents]
+        reserved_archive = sum(len(d["body"]) for d in archive_documents)
         for doc in ordered:
             if doc["id"] in unique:
                 continue
-            if count + len(doc["body"]) > 180000:
+            if doc.get("origin") == "personal_archive":
+                reserved_archive -= len(doc["body"])
+            limit = 180000 - reserved_archive
+            if count + len(doc["body"]) > limit:
                 warnings.append("资料达到单次 18 万字符上限，部分材料未纳入；可缩小范围后生成")
                 if request["kind"] != "personal" or count >= 180000:
                     break
-                doc = dict(doc, body=doc["body"][:180000-count], coverage_limit="正文因单次材料预算截短，不能推定未读部分")
+                doc = dict(doc, body=doc["body"][:max(0, limit-count)], coverage_limit="正文因单次材料预算截短，不能推定未读部分")
+                if not doc["body"]:
+                    continue
             unique[doc["id"]] = doc
             count += len(doc["body"])
         return {"documents": list(unique.values()), "warnings": list(dict.fromkeys(warnings)), "start": start, "end": end,

@@ -54,6 +54,29 @@ flag; permanent deletion requires an explicit confirmation in the recycle bin.
 
 ## Sources and generation
 
+Optional `personal_archive_root` identifies an owner-authorized private archive.
+The native settings page can set or clear it. Personal reviews query confirmed
+records by default; topic packages use an explicit **使用已确认个人档案** checkbox.
+Development/work reviews do not read the archive. Demo never opens it.
+The shared `personal_archive` Module validates and retrieves registered Markdown
+without executing archive code or following links. Missing, malformed, stale
+confirmation and budget limits remain coverage warnings. Current self-report
+takes precedence; older archive entries are dated background, and interpretation
+never becomes objective fact through confirmation. Adopted IDs, content hashes,
+applicability dates and necessary excerpts remain in private report evidence.
+Opted-in topic packages retain these fields and source snapshots in the
+application-generated `个人档案依据.json`; it is reserved against model file names.
+No generation writes candidates or synchronizes Git.
+
+For standalone archive maintenance, `personal-archive` (or
+`scripts/run_personal_archive.py`) provides `validate`, `query`, `review-digest`
+and guarded `push-private`. Owner approval is a maintenance obligation; the
+content digest checks the reviewed version, not the owner's identity. Archive
+locations and repository identities belong in external configuration, never
+portable source. The reader caps files at 256 KiB, scanned entries at 2,000 and
+input at 16 MiB; adopted context is at most 20 entries / 12,000 characters and
+reserves space within the existing 180,000-character evidence budget.
+
 Manage source roots in **资料来源**. A single-project source reads bounded Git
 activity and selected changed text files. A collection discovers immediate Git
 children only. It does not recursively inventory the whole workspace or projects

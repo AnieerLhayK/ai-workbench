@@ -108,6 +108,16 @@ class Reports:
             f"- [{d['id']}] {d['title']} · {d.get('at') or '日期未知'} · {d.get('path', d['origin'])}" for d in bundle["documents"])
         files = [{"name": "汇报正文.md", "content": "# " + result["title"] + "\n\n" + result["body"]},
                  {"name": "证据索引.md", "content": evidence}, *proposed]
+        archive_evidence = []
+        for doc in bundle["documents"]:
+            if doc.get("origin") != "personal_archive":
+                continue
+            record = json.loads(doc["body"])
+            archive_evidence.append({key: doc.get(key) for key in
+                ("id", "title", "fingerprint", "validity", "claim_kind", "path", "timing")} |
+                {"excerpt": record["body"][:800], "sources": record["sources"]})
+        if archive_evidence:
+            files.append({"name": "个人档案依据.json", "content": json.dumps(archive_evidence, ensure_ascii=False, indent=2)})
         seen = set()
         for file in files:
             name, content = file.get("name", ""), file.get("content")

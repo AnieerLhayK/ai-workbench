@@ -3,6 +3,7 @@
   "codex_cli": "<absolute-existing-codex-executable>",
   "prose_path": "",
   "zf_root": "<absolute-user-style-sync-source-directory>",
+  "personal_archive_root": "",
   "staging_root": "<absolute-approved-staging-directory>",
   "source_roots": ["<absolute-workspace-git-root>", "<absolute-project-collection-root>"],
   "read_codex": true,

@@ -19,6 +19,10 @@ Run `python -B scripts/launch_e_diary.py --demo` or
 real sources or calls Codex. See [e-Diary](docs/e-diary.md) for storage, imports,
 loop behavior, configuration, installation and verification.
 
+Optional owner-authorized personal archives provide confirmed, cited background
+for personal reviews and explicitly selected topic packages. Archive content stays
+external. The shared `personal-archive` CLI validates and searches the same data.
+
 ## Personal Experiment Box
 
 The independent **个人试验盒** desktop entry offers trial cards, a dedicated

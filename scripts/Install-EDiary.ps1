@@ -5,6 +5,7 @@ param(
     [Parameter(Mandatory)][string]$CodexCli,
     [string]$ProsePath = "",
     [Alias('ZfRoot')][string]$UserStyleSource = "",
+    [string]$PersonalArchiveRoot = "",
     [Parameter(Mandatory)][string]$StagingRoot,
     [Parameter(Mandatory)][string[]]$SourceRoots
 )
@@ -14,7 +15,7 @@ if ($ProsePath) { $requiredFiles += $ProsePath }
 foreach ($file in $requiredFiles) {
     if (-not [IO.Path]::IsPathRooted($file) -or -not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "Missing file: $file" }
 }
-foreach ($directory in @($DataRoot, $DesktopRoot, $StagingRoot) + $SourceRoots + @($UserStyleSource | Where-Object { $_ })) {
+foreach ($directory in @($DataRoot, $DesktopRoot, $StagingRoot) + $SourceRoots + @($UserStyleSource, $PersonalArchiveRoot | Where-Object { $_ })) {
     if (-not [IO.Path]::IsPathRooted($directory)) { throw 'All paths must be absolute.' }
 }
 if (-not (Test-Path -LiteralPath $DesktopRoot -PathType Container)) { throw 'Desktop root does not exist.' }
@@ -24,7 +25,7 @@ $shortcutPath = Join-Path $DesktopRoot 'e-Diary.lnk'
 if ((Test-Path -LiteralPath $configPath) -or (Test-Path -LiteralPath $shortcutPath)) { throw 'Existing deployment; inspect before changing it.' }
 [void][IO.Directory]::CreateDirectory($DataRoot)
 [void][IO.Directory]::CreateDirectory($StagingRoot)
-@{data_root=$DataRoot;codex_cli=$CodexCli;prose_path=$ProsePath;zf_root=$UserStyleSource;staging_root=$StagingRoot;source_roots=$SourceRoots;read_codex=$true} |
+@{data_root=$DataRoot;codex_cli=$CodexCli;prose_path=$ProsePath;zf_root=$UserStyleSource;personal_archive_root=$PersonalArchiveRoot;staging_root=$StagingRoot;source_roots=$SourceRoots;read_codex=$true} |
     ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $configPath -Encoding utf8
 $packageRoot = Split-Path $PSScriptRoot -Parent
 $shell = New-Object -ComObject WScript.Shell

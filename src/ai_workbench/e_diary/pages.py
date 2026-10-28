@@ -73,6 +73,7 @@ class Preferences(QWidget):
         form.addRow("外观", self.theme)
         self.fields = {}
         for key, label in (("codex_cli", "Codex CLI"), ("prose_path", "prose.md（留空使用内置规范）"), ("zf_root", "user-style 同步源目录"),
+                           ("personal_archive_root", "个人档案目录（可选）"),
                            ("staging_root", "临时任务目录"), ("model", "模型（留空沿用 Codex）")):
             field = QLineEdit(str(config.get(key, "")))
             if key == "prose_path":
@@ -117,6 +118,9 @@ class Preferences(QWidget):
     def save(self):
         runtime = {k: w.text().strip() for k, w in self.fields.items()}
         runtime["read_codex"] = self.read_sessions.isChecked()
+        if runtime["personal_archive_root"] and not Path(runtime["personal_archive_root"]).is_absolute():
+            self.message.setText("个人档案目录必须为绝对路径；留空停用")
+            return
         if runtime["prose_path"] and not Path(runtime["prose_path"]).is_absolute():
             self.message.setText("自定义 prose_path 必须为绝对路径；留空使用内置规范")
             return
@@ -461,6 +465,9 @@ class ReportPage(QWidget):
             checks.addWidget(check)
         self.zf = QCheckBox("user-style 风格")
         checks.addWidget(self.zf)
+        self.personal_archive = QCheckBox("使用已确认个人档案")
+        self.personal_archive.setChecked(False)
+        checks.addWidget(self.personal_archive)
         form.addLayout(checks)
         add = QPushButton("本次补充资料…")
         add.setEnabled(not jobs.config.get("demo"))
@@ -586,6 +593,7 @@ class ReportPage(QWidget):
                 "end": datetime.combine(self.end.date().addDays(1).toPython(), datetime.min.time()).astimezone().isoformat(),
                 "topic": topic, "prompt": topic.get("prompt", "") + "\n" + self.prompt.toPlainText(),
                 "include": [k for k, check in self.include.items() if check.isChecked()], "zf": self.zf.isChecked(),
+                "personal_archive": self.personal_archive.isChecked(),
                 "extra_paths": self.extra_paths, "output_dir": self.output.text().strip()}
             self.jobs.submit(request)
         except (DiaryError, OSError) as error:

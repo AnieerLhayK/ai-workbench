@@ -51,6 +51,20 @@ state is authoritative; never treat a stale PID or installer as a ready device.
 
 ## Storage and dependencies
 
+Personal archive context is data-only and separate from style snapshots.
+Maintain its parser, limits and confirmation-version checks in the shared
+`personal_archive` Module used by CLI and diary. Real human approval remains a
+maintenance authorization obligation; matching content hashes alone do not
+authenticate an owner. Keep private paths, owner/style bindings and examples
+outside portable source; test using explicitly synthetic records. Preserve
+source warnings and provenance when passing confirmed long-term context to a
+task. A current self-report can contradict an older approved record.
+
+Git history filenames are untrusted even without a Windows checkout. Reject
+drive-bearing/rooted names and require resolved containment inside the registered
+project before reading evidence; an absolute-path check alone permits Windows
+drive-relative paths. Preserve this regression alongside ordinary nested files.
+
 `codex_isolation` owns generation-only capability restrictions for e-Diary,
 the experiment assistant and e-Chatter. Keep policy/catalog/event checks shared,
 but preserve the two transports and their domain errors. Empty TOML maps merge

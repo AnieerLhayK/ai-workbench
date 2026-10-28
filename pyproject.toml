@@ -16,6 +16,7 @@ dev = ["pytest>=8,<10"]
 ai-workbench = "ai_workbench.app:main"
 experiment-box = "ai_workbench.experiment_box.app:main"
 e-diary = "ai_workbench.e_diary.app:main"
+personal-archive = "ai_workbench.personal_archive:main"
 e-chatter = "ai_workbench.e_chatter.app:main"
 
 [tool.setuptools.packages.find]
