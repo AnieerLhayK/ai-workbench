@@ -19,6 +19,8 @@
     "docs/project-terminals.md",
     "src/ai_workbench/__init__.py",
     "src/ai_workbench/personal_archive.py",
+    "src/ai_workbench/chatgpt_export.py",
+    "tests/test_chatgpt_export.py",
     "scripts/run_personal_archive.py",
     "tests/test_personal_archive.py",
     "src/ai_workbench/__main__.py",

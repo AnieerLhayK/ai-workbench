@@ -51,6 +51,12 @@ state is authoritative; never treat a stale PID or installer as a ready device.
 
 ## Storage and dependencies
 
+Keep reusable export decoding pure and independent of Sources, Qt and application
+state. Applications own role selection, duplicate-import bookkeeping and writes;
+research consumers own population selection. Preserve provenance and branch
+metadata at the parser interface, and add extracted modules to the portable
+projection contract together with their tests.
+
 Personal archive context is data-only and separate from style snapshots.
 Maintain its parser, limits and confirmation-version checks in the shared
 `personal_archive` Module used by CLI and diary. Real human approval remains a

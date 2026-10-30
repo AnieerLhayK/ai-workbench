@@ -547,6 +547,24 @@ def bundle():
         "documents": [{"id": "a", "title": "记录", "origin": "diary", "at": "2026-10-14", "body": "一些记录"}]}
 
 
+def test_partial_import_diagnostics_survive_reload_and_reach_evidence_warnings(tmp_path):
+    root = tmp_path / "library"
+    library, settings = DiaryLibrary(root), Settings(root)
+    source = tmp_path / "synthetic.json"
+    source.write_text(json.dumps([{"body": "synthetic retained text"}, None]), encoding="utf-8")
+    sources = Sources(settings, library, {"read_codex": False})
+    assert sources.import_file(source) == 1
+    assert settings.data["imports"][0]["diagnostics"] == ["invalid_conversation:1"]
+    assert sources.import_file(source) == 0
+    reloaded = Settings(root)
+    sources = Sources(reloaded, DiaryLibrary(root), {"read_codex": False})
+    result = sources.collect({"kind": "topic", "include": [],
+        "start": "2026-10-01T00:00:00+08:00", "end": "2026-10-15T00:00:00+08:00"},
+        threading.Event(), lambda _: None)
+    assert any("invalid_conversation:1" in warning for warning in result["warnings"])
+    assert any(doc["body"] == "synthetic retained text" for doc in result["documents"])
+
+
 def test_reports_atomic_files_pdf_images_and_path_validation(qt_app, tmp_path):
     reports = Reports(Settings())
     result = {"title": "汇报", "body": "完成与计划分开。", "files": [

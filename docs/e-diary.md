@@ -54,6 +54,18 @@ flag; permanent deletion requires an explicit confirmation in the recycle bin.
 
 ## Sources and generation
 
+ChatGPT JSON decoding is shared with independent local consumers through the
+pure `ai_workbench.chatgpt_export` Module (`parse_chatgpt_export` and
+`read_chatgpt_export`). It imports no Qt, account configuration or diary state
+and writes nothing. It preserves message roles, branch links and current_node;
+research callers decide selection themselves. e-Diary retains its existing
+mapping-import user/assistant scope, local file-hash deduplication and storage.
+Parsed content is private, not anonymized. Malformed/non-text records receive
+coded diagnostics instead of becoming fabricated prose.
+Import metadata retains these diagnostics, and evidence collection includes a
+coverage warning whenever an import omitted malformed or non-text content.
+The warning survives application reload and duplicate-import suppression.
+
 Optional `personal_archive_root` identifies an owner-authorized private archive.
 The native settings page can set or clear it. Personal reviews query confirmed
 records by default; topic packages use an explicit **使用已确认个人档案** checkbox.

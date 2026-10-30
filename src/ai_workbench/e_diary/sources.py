@@ -12,6 +12,7 @@ from threading import Event
 from collections import deque
 from xml.etree import ElementTree
 
+from ..chatgpt_export import parse_chatgpt_export
 from ..storage import atomic_json
 from ..personal_archive import query as query_archive
 from .codex import AppServer
@@ -163,36 +164,21 @@ class Sources:
         key = digest(text)
         if any(i["hash"] == key for i in self.settings.data["imports"]):
             return 0
-        documents = []
+        documents, diagnostics = [], []
         if path.suffix.lower() in (".json", ".zip"):
-            value = json.loads(text)
-            conversations = value if isinstance(value, list) else value.get("conversations", [value])
-            for conversation in conversations:
-                mapping = conversation.get("mapping", {})
-                if mapping:
-                    for node_id, node in mapping.items():
-                        message = node.get("message") or {}
-                        role = message.get("author", {}).get("role")
-                        parts = message.get("content", {}).get("parts", [])
-                        body = "\n".join(p for p in parts if isinstance(p, str))
-                        if body and role in ("user", "assistant"):
-                            documents.append({"id": f"chatgpt:{conversation.get('id', key)}:{node_id}",
-                                "title": conversation.get("title", "ChatGPT 对话"), "body": body,
-                                "at": timestamp(message.get("create_time")), "role": role,
-                                "parent": node.get("parent"), "children": node.get("children", []), "origin": "chatgpt"})
-                elif isinstance(conversation.get("messages"), list):
-                    for n, message in enumerate(conversation["messages"]):
-                        documents.append({"id": f"import:{key}:{n}", "title": conversation.get("title", path.stem),
-                            "body": str(message.get("content", "")), "role": message.get("role", "unknown"),
-                            "at": timestamp(message.get("create_time") or message.get("timestamp")), "origin": "chatgpt"})
-                elif isinstance(conversation.get("body"), str):
-                    documents.append({"id": f"import:{key}", "title": conversation.get("title", path.stem),
-                        "body": conversation["body"], "at": timestamp(conversation.get("date")), "origin": "import"})
+            parsed = parse_chatgpt_export(text, source_id=key)
+            diagnostics = list(parsed.diagnostics)
+            # Research parsing preserves every role. Diary mapping imports keep
+            # their existing user/assistant scope; flat imports remain supported.
+            documents = [document for document in parsed.documents if
+                         document.get("export_format") != "mapping" or
+                         (document.get("body") and document.get("role") in ("user", "assistant"))]
         else:
             documents = [{"id": f"import:{key}", "title": path.stem, "body": text, "at": None, "origin": "import"}]
         if not documents:
             raise DiaryError("未找到可导入的对话文本；支持 ChatGPT 导出 mapping、messages 或 body 格式")
-        item = {"id": uuid4().hex, "hash": key, "name": path.name, "imported_at": now(), "count": len(documents)}
+        item = {"id": uuid4().hex, "hash": key, "name": path.name, "imported_at": now(),
+                "count": len(documents), "diagnostics": diagnostics}
         if self.library.root:
             atomic_json(self.library.root / "imports" / (item["id"] + ".json"), {"documents": documents})
         else:
@@ -352,6 +338,11 @@ class Sources:
         if request["kind"] in ("development", "work", "personal") and not history:
             warnings.append("未找到本期之前的长期回顾背景；不能据此断言长期取向或变化")
         for item in self.settings.data["imports"]:
+            diagnostics = item.get("diagnostics", [])
+            if diagnostics:
+                warnings.append("导入资料存在未解析或非文本内容，当前文本覆盖不完整：" +
+                                ", ".join(diagnostics[:20]) +
+                                (f"（另有 {len(diagnostics) - 20} 条诊断）" if len(diagnostics) > 20 else ""))
             docs = (load_json(self.library.root / "imports" / (item["id"] + ".json"))["documents"]
                     if self.library.root else self.memory_imports[item["id"]])
             for doc in docs:
