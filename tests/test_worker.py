@@ -326,6 +326,57 @@ def test_hermes_requires_profile_record_and_runtime(tmp_path):
     assert not backend.matches("hermes", wrong)
 
 
+def test_hermes_rejects_reused_pid_when_record_has_start_fingerprint(tmp_path):
+    runtime = tmp_path / "venv/Scripts/pythonw.exe"
+    backend = WindowsProcesses({"hermes_pythonw": str(runtime), "hermes_home": str(tmp_path)})
+    atomic_json(tmp_path / "gateway.pid", {"pid": 90, "kind": "hermes-gateway", "start_time": 10000})
+    args = "pythonw -m hermes_cli.main gateway run"
+    assert backend.matches("hermes", Identity(90, "/Date(100000)/", str(runtime), args))
+    assert not backend.matches("hermes", Identity(90, "/Date(200000)/", str(runtime), args))
+
+
+def test_hermes_official_launcher_clears_legacy_environment(monkeypatch):
+    monkeypatch.setenv("VIRTUAL_ENV", "old-runtime")
+    monkeypatch.setenv("PYTHONPATH", "old-source")
+    captured = {}
+    def popen(command, **kwargs):
+        captured.update(command=command, **kwargs)
+    monkeypatch.setattr("ai_workbench.windows.subprocess.Popen", popen)
+    WindowsProcesses({"hermes_pythonw": "/runtime/Scripts/pythonw.exe", "hermes_home": "/profile",
+                      "hermes_exe": "/bin/hermes.exe", "hermes_launch_mode": "launcher"}).launch("hermes")
+    assert captured["command"] == ["/bin/hermes.exe", "gateway", "run"]
+    assert "VIRTUAL_ENV" not in captured["env"]
+    assert "PYTHONPATH" not in captured["env"]
+
+
+def test_hermes_official_launcher_requires_exact_profile_identity(tmp_path):
+    launcher = tmp_path / "bin" / "hermes.exe"
+    backend = WindowsProcesses({"hermes_pythonw": str(tmp_path / "venv" / "Scripts" / "pythonw.exe"),
+                               "hermes_home": str(tmp_path), "hermes_exe": str(launcher),
+                               "hermes_launch_mode": "launcher"})
+    identity = Identity(90, "created", str(launcher), f'"{launcher}" gateway run')
+    assert not backend.matches("hermes", identity)
+    atomic_json(tmp_path / "gateway.pid", {"pid": 90, "kind": "hermes-gateway"})
+    assert backend.matches("hermes", identity)
+    assert not backend.matches("hermes", Identity(90, "created", "unrelated.exe", identity.command))
+
+
+def test_hermes_bootstrap_child_requires_exact_resolved_command(tmp_path):
+    import subprocess
+    python = str(tmp_path / "python.exe")
+    argv = [python, "-I", "-c", "import runpy; runpy.run_module('hermes_cli.main')", "gateway", "run"]
+    backend = WindowsProcesses({"hermes_pythonw": str(tmp_path / "venv/Scripts/pythonw.exe"),
+                               "hermes_home": str(tmp_path), "hermes_exe": str(tmp_path / "hermes.exe"),
+                               "hermes_launch_mode": "launcher", "hermes_runtime_argv": argv})
+    atomic_json(tmp_path / "gateway.pid", {"pid": 90, "kind": "hermes-gateway"})
+    assert backend.matches("hermes", Identity(90, "created", python, subprocess.list2cmdline(argv)))
+    changed = argv.copy()
+    changed[3] = "arbitrary code"
+    assert not backend.matches("hermes", Identity(90, "created", python, subprocess.list2cmdline(changed)))
+    forged = [python, "-c", str(tmp_path / "hermes.exe") + " gateway run"]
+    assert not backend.matches("hermes", Identity(90, "created", python, subprocess.list2cmdline(forged)))
+
+
 def test_pid_reuse_prevents_termination(monkeypatch):
     backend = WindowsProcesses({})
     old = Identity(4, "old", "exe", "command")

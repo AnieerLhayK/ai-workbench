@@ -22,6 +22,16 @@ or malformed expansion lists default to ChatGPT/Hermes; an empty list collapses
 all categories and unknown IDs are ignored. The portable Catalog Module owns
 category order, titles and launcher membership, independently of host platforms.
 
+An approved Hermes deployment can additionally set `hermes_launch_mode` to
+`launcher`. This uses `hermes_exe gateway run` and removes inherited legacy
+Python environment overrides. `hermes_runtime_argv` holds the exact gateway
+command resolved by that launcher's `--print-runtime-command` interface so
+the worker can identify its isolated bootstrap child. `hermes_pythonw` still
+identifies the selected runtime and supports older deployments when launcher
+mode is absent. A host migration updates these fields together; paths alone
+do not establish readiness. PID records with a start fingerprint must match
+the observed creation time.
+
 Copy [the placeholder example](../examples/config.example.json) outside the clone
 and replace every value before launching real mode. Existing Hermes/Node runtimes
 are prerequisites. See [README](../README.md) for isolated dependency installation
@@ -58,7 +68,7 @@ reports incomplete output explicitly. Reader generations prevent an old launch
 from changing a retry. It never persists upstream error text, account identifiers,
 tokens or codes.
 
-Hermes uses its existing virtual environment and `HERMES_HOME`; readiness is
+Hermes uses its configured installed runtime and `HERMES_HOME`; readiness is
 checked against its current profile runtime record. Stop uses `gateway stop`.
 Connection problems do not stop the process. Auth remains with each provider;
 this application does not read, export or reset credentials.
