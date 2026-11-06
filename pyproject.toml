@@ -27,6 +27,7 @@ ai_workbench = ["assets/*.svg", "assets/*.ico"]
 "ai_workbench.e_diary" = ["prose.md"]
 "ai_workbench.experiment_box" = ["*.md"]
 "ai_workbench.e_chatter" = ["resources/**/*", "web/**/*", "web/*"]
+"ai_workbench.ci" = ["*.mjs", "*.ps1"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

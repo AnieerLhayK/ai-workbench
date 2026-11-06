@@ -366,6 +366,13 @@ class Workbench(QMainWindow):
         self.choose_project.clicked.connect(self.browse_project)
         project_line.addWidget(self.project_selector, 1)
         project_line.addWidget(self.choose_project)
+        self.ci_button = QPushButton("CI 修复")
+        self.ci_button.setObjectName("launchButton")
+        self.ci_button.clicked.connect(self.open_ci)
+        self.ci_button.setEnabled(demo or preferences is not None)
+        project_line.addWidget(self.ci_button)
+        self.ci_demo = demo
+        self.ci_window = None
         layout.addLayout(project_line)
         self.project_hint = QLabel()
         self.project_hint.setObjectName("status")
@@ -419,6 +426,22 @@ class Workbench(QMainWindow):
             self.project_selector.addItem(value, value)
         self.project_selector.setCurrentIndex(max(0, self.project_selector.findData(self.project)))
         self.project_selector.setToolTip(self.project)
+
+    def open_ci(self):
+        from .ci.client import CIClient
+        from .ci.window import CIWindow, DemoCIClient
+        if self.ci_window is None:
+            client = DemoCIClient() if self.ci_demo else CIClient(self.preferences.parent / "ci")
+            self.ci_window = CIWindow(client, self, self.project, self.ci_demo)
+        self.ci_window.timer.start()
+        self.ci_window.show()
+        self.ci_window.raise_()
+        self.ci_window.activateWindow()
+
+    def closeEvent(self, event):
+        if self.ci_window is not None:
+            self.ci_window.close()
+        super().closeEvent(event)
 
     def browse_project(self):
         selected = QFileDialog.getExistingDirectory(self, "选择项目目录", self.project if Path(self.project).is_dir() else "")

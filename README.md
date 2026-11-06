@@ -6,6 +6,21 @@ window with independent Commander/Hermes controls, project terminal launchers
 for Codex and Claude Code, and an explicit demo.
 Workspace remains the authoritative source.
 
+## CI repairs
+
+Open **CI 修复** in muti-ai for a separate native panel. Configure one GitHub.com
+repository, its local clone and a test command. Monitoring discovers failed
+Actions checks; each repair starts with a deliberate click. DSH is the default,
+Claude Code and Codex are selectable, and model fields retain per-agent values.
+An optional command argv supports another native runner.
+
+The detached worker continues after window closure. Repairs use independent
+clones, recheck the PR head, preserve the original branch and produce local
+patches plus independently executed test results. This first version does not
+push, open PRs or merge. Demo uses synthetic in-memory data and no model calls.
+See [CI workflow](docs/ci-workflow.md) for native prerequisites, runtime storage,
+configuration, qualified limits and the custom-runner receipt contract.
+
 ## e-Diary
 
 The independent **e-Diary** Qt application edits Markdown/plain-text diaries and

@@ -11,6 +11,16 @@ A skill or MCP connection does not grant those permissions.
 
 ## Design and evidence
 
+For CI discovery, private repair clones and detached monitoring, read
+[CI workflow](../docs/ci-workflow.md). CIService owns persistent transitions;
+GitHubChecks and NativeRepair provide the variable Seams. UI closure stops only
+observation. Test actual patches and independent native verification; discovery,
+process exit and an agent's self-report do not establish success. Keep credentials
+and default model selection in each native harness. Scope Windows preparation to
+new caller-owned clone/temp roots, snapshot their DACLs, and localize PowerShell
+module-path overrides to that child. Never patch the provider installation or
+change global sandbox mode to make an acceptance test pass.
+
 The lifecycle module owns state transitions and async completion. Its adapters
 complete on the controller's thread; a future worker adapter must marshal its
 completion to the GUI thread. The UI observes state and sends requests. Each

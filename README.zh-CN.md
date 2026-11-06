@@ -4,6 +4,17 @@
 0.5 版提供 **muti-ai** 原生 Qt 窗口：独立的 Commander/Hermes 控制开关、
 Codex 与 Claude Code 项目终端入口，以及显式模拟演示。Workspace 保持源码权威。
 
+## CI 修复
+
+在 muti-ai 点击 **CI 修复**，打开独立原生面板。配置 GitHub.com 仓库、本地 clone
+和测试命令；后台发现失败的 Actions 检查后，由用户逐项点击开始修复。默认 DSH，
+可切换 Claude Code、Codex；model 按 agent 分别记忆，也可配置其他原生执行器。
+
+关闭窗口后，独立后台继续监测和处理已开始的修复。每次修复使用独立 clone，
+重新核对 PR head，保留原仓库分支，产出本地补丁与独立执行的测试结果。首版不推送、
+不创建 PR、不 merge。演示仅使用内存中的合成数据，不调用模型。
+原生运行前提、数据目录、自定义执行器回执及已验收范围见 [CI workflow](docs/ci-workflow.md)。
+
 ## e-Diary
 
 独立 Qt 应用 **e-Diary** 支持 Markdown／纯文本日记编辑，以及按时期直接查看
