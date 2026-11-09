@@ -86,6 +86,36 @@ class Service:
                               character_id=None, version=None, model=None, model_preferences={})
 
     @locked
+    def move_items(self, items, destination=None):
+        if not isinstance(items, list) or not items:
+            raise ChatterError("请选择要移动的项目")
+        with self.store.transaction():
+            folders = {f['id']: f for f in self.store.rows('folders')}
+            sessions = {s['id']: s for s in self.store.rows('sessions')}
+            if destination is not None and destination not in folders:
+                raise ChatterError("目标分类不存在")
+            selected = set()
+            for item in items:
+                if not isinstance(item, dict) or item.get('kind') not in ('folder', 'session'):
+                    raise ChatterError("移动项目无效")
+                kind, ident = item['kind'], item.get('id')
+                if ident not in (folders if kind == 'folder' else sessions):
+                    raise ChatterError("移动项目不存在")
+                selected.add((kind, ident))
+            selected_folders = {i for k, i in selected if k == 'folder'}
+            cursor = destination
+            while cursor is not None:
+                if cursor in selected_folders:
+                    raise ChatterError("分类不能放入自身或子分类")
+                cursor = folders[cursor].get('parent')
+            for kind, ident in selected:
+                cursor = folders[ident].get('parent') if kind == 'folder' else sessions[ident].get('folder')
+                while cursor is not None and cursor not in selected_folders:
+                    cursor = folders[cursor].get('parent')
+                if cursor is None:
+                    self.store.update('folders' if kind == 'folder' else 'sessions', ident, **({'parent': destination} if kind == 'folder' else {'folder': destination}))
+
+    @locked
     def models(self, session_id, agent, model=None, effort=None, task_id=None):
         from .providers import AGENTS
         if agent not in AGENTS or any(v is not None and (not isinstance(v, str) or not v) for v in (model, effort)):

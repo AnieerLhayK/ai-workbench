@@ -3,6 +3,17 @@ import { DemoTransport } from './demo';
 import type { Snapshot, Confirmation } from './types';
 
 describe('explicit demo application flows', () => {
+  it('moves selected items together and rejects a folder cycle atomically', async () => {
+    const app = new DemoTransport();
+    const items = [{kind: 'folder', id: 'f1'}, {kind: 'session', id: 's1'}];
+    await expect(app.call('tree.move', {items, destination: 'f2'})).rejects.toThrow('分类不能放入自身或子分类');
+    let s = await app.call<Snapshot>('snapshot');
+    expect(s.folders.find(f => f.id === 'f1')?.parent).toBeNull();
+    await app.call('tree.move', {items, destination: 'f3'});
+    s = await app.call<Snapshot>('snapshot');
+    expect(s.folders.find(f => f.id === 'f1')?.parent).toBe('f3');
+    expect(s.sessions.find(x => x.id === 's1')?.folder).toBe('f2');
+  });
   it('requires an engineering confirmation and consumes its token', async () => {
     vi.stubGlobal('window', globalThis);
     const app = new DemoTransport();

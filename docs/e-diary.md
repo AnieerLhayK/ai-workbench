@@ -2,14 +2,23 @@
 
 e-Diary is an independent native Qt application for text diaries, development and
 work summaries, personal reviews and topic-specific evidence packages. It calls
-the existing local Codex CLI directly; Pi and API keys are not required.
+the existing local Codex CLI or the supported official DeepSeek Harness.
 
 Writing generation shares the package's tool-free Codex isolation policy with
 e-Chatter and the experiment assistant. It ignores user configuration and rules,
 disables tools/integrations, and uses an app-owned restricted model catalog.
 Unsupported isolation stops before submitting evidence; there is no permissive
-fallback. Authentication stays in Codex. History reading retains its separate
+fallback. Codex authentication stays in Codex. History reading retains its separate
 transport and does not acquire generation or execution authority.
+
+Select the generation provider in settings and save before submitting a task.
+There is no automatic provider fallback. DeepSeek supports official account
+login and API Key through an e-Diary-owned private credential store; the key is
+never stored in the settings document. The selected provider receives the same
+task evidence, including confirmed personal archive excerpts when the task
+includes them. Codex history remains a separate optional source. DeepSeek uses
+the e-Chatter tool-free profile and accepts only Harness 0.2.1-rc.2; unknown
+versions or failed isolation preflight stop the task before evidence submission.
 
 ## Start
 

@@ -132,6 +132,9 @@ class CodexAdapter:
     def __init__(self, config):
         self.config = config
 
+    def snapshot(self):
+        return CodexAdapter(dict(self.config))
+
     def generate(self, prompt, directory, cancelled, progress):
         if cancelled.is_set():
             raise DiaryError("任务已取消")
@@ -175,7 +178,7 @@ class CodexAdapter:
                 if time.monotonic() >= deadline:
                     raise DiaryError("Codex 生成超时，可在任务窗口重试")
             if process.returncode:
-                raise DiaryError(f"Codex 生成失败（退出码 {process.returncode}），请检查登录、额度与配置")
+                raise DiaryError(f"Codex 生成失败（退出码 {process.returncode}），请检查登录、额度与配置；可在设置中手动切换服务商")
             reader.join(timeout=5)
             diagnostics.join(timeout=5)
             if reader.is_alive() or diagnostics.is_alive():

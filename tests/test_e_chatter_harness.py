@@ -12,11 +12,11 @@ from ai_workbench.e_chatter.files import ChatterError
 
 
 @pytest.mark.skipif(os.environ.get("E_CHATTER_RUN_DSH") != "1", reason="requires separately qualified official Windows Harness runtime")
-@pytest.mark.parametrize("mode", ["success", "cancel", "tool"])
+@pytest.mark.parametrize("mode", ["success", "cancel", "tool", "diary"])
 def test_official_harness_tool_free_stream_against_local_synthetic_endpoint(tmp_path, monkeypatch, mode):
     received = []
     arrived, release = threading.Event(), threading.Event()
-    reply = json.dumps(dict(reply="synthetic harness stream", status="completed", files=[], diagnosis="", handoff="", build_intake=""))
+    reply = json.dumps(dict(title="synthetic title", body="synthetic diary", files=[]) if mode == "diary" else dict(reply="synthetic harness stream", status="completed", files=[], diagnosis="", handoff="", build_intake=""))
 
     class Endpoint(BaseHTTPRequestHandler):
         def log_message(self, *_):
@@ -68,6 +68,15 @@ def test_official_harness_tool_free_stream_against_local_synthetic_endpoint(tmp_
     adapter = deepseek.DeepSeek(tmp_path / "harness", auth="api_key")
     try:
         adapter.authenticate("save_key", key="synthetic-fixture-not-a-real-key")
+        if mode == "diary":
+            from ai_workbench.e_diary.providers import DeepSeekAdapter
+            diary = DeepSeekAdapter({"data_root": str(tmp_path), "deepseek_auth": "api_key"},
+                                    harness_factory=lambda **kwargs: deepseek.DeepSeek(tmp_path / "harness", **{k: v for k, v in kwargs.items() if k != "root"}))
+            result = diary.generate("synthetic diary evidence", tmp_path, threading.Event(), lambda _: None)
+            assert result == {"title": "synthetic title", "body": "synthetic diary", "files": []}
+            assert len(received) == 1 and not received[0].get("tools")
+            assert not list((tmp_path / "harness/runs").glob("*/home/sessions/**/*.jsonl"))
+            return
         catalog = adapter.account()
         assert catalog["connected"] and catalog["models"]
         request = {"task_id": "synthetic-task", "session_id": "synthetic-conversation", "execution": {"agent": "deepseek", "model": catalog["models"][0]["id"], "effort": "off"}, "payload": {"role": "chat", "user": "Synthetic writing-only request", "history": [], "character": {}}}

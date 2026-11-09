@@ -18,6 +18,20 @@ from .files import ChatterError, atomic, plain_path, uid
 SAFE_ROWS = {"sdk-app-startup", "deepseek-llm-api-extensions", "llm-deepseek", "sandbox", "filesystem", "attachment-local", "working-directory", "session-projection", "token-meter", "compaction-basic", "image-offload", "sandbox-policy", "timer", "llm", "session", "session-title", "system-prompt", "tools", "agent", "llm-retry", "jobs", "agent-loop", "sessions"}
 
 
+def qualified_minimal_rows(executable):
+    """Validate the official SDK version and complete roster before launching."""
+    from .harness_archive import read_file
+    archive = Path(executable).parent / "resources/app.asar"
+    version = json.loads(read_file(archive, "package.json"))["version"]
+    if version != "0.2.1-rc.2":
+        raise ChatterError("Harness 版本尚未验证隔离兼容性；当前支持 0.2.1-rc.2")
+    rows = yaml.load(read_file(archive, "dsh/node_modules/@deepseek-ai/dsh-sdk-minimal/cordis.patch.yml"), Loader=yaml.BaseLoader)[0]["insert"]
+    known = SAFE_ROWS | {"sdk-jsonrpc-server", "session-log-deepseek", "plugin-package-inventory-deepseek", "tool-fs", "tool-working-directory", "subprocess", "pty", "terminal-bash", "terminal-pwsh", "persistent-bash", "persistent-pwsh", "mcp-resources"}
+    if {row["id"] for row in rows} != known or len(rows) != len(known):
+        raise ChatterError("Harness 模板能力已变化，隔离检查未通过")
+    return rows
+
+
 def installation(entry=None):
     path = Path(entry) if entry else Path(os.environ.get("LOCALAPPDATA", "")) / "Programs/DeepSeek Harness/DeepSeek Harness.exe"
     if path.name.lower() == "dsh.cmd" and path.parent.name == "bin":
@@ -28,8 +42,11 @@ def installation(entry=None):
 
 
 class DeepSeek:
-    def __init__(self, root, cli=None, auth="account"):
+    def __init__(self, root, cli=None, auth="account", *, output_schema=None, writing_policy=None, persist_session=True):
         self.root, self.cli, self.auth = Path(root), cli, auth
+        self.output_schema = output_schema or SCHEMA
+        self.writing_policy = writing_policy
+        self.persist_session = persist_session
         self.control = None
         self.lock = threading.RLock()
         self.jobs = set()
@@ -48,23 +65,14 @@ class DeepSeek:
         manifest = {"name": "e-chatter-private-profile", "private": True, "dsh": {"profile": {"bundles": ["@deepseek-ai/dsh-sdk-minimal"]}}}
         atomic(profile / "package.json", json.dumps(manifest).encode())
         atomic(profile / "cordis.patch.yml", b"[]\n")
-        policy = (Path(__file__).with_name("resources") / "policy.md").read_text(encoding="utf-8")
+        policy = self.writing_policy or (Path(__file__).with_name("resources") / "policy.md").read_text(encoding="utf-8")
         if role != "chat":
             policy += "\n" + (Path(__file__).with_name("resources") / "skills" / role / "SKILL.md").read_text(encoding="utf-8")
-        policy += "\nReturn exactly one JSON object, no markdown fences, matching: " + json.dumps(SCHEMA)
+        policy += "\nReturn exactly one JSON object, no markdown fences, matching: " + json.dumps(self.output_schema)
         bridge = Path(__file__).with_name("resources") / "harness-bridge.mjs"
-        # Explicit known template roster. Unknown template rows are refused by the
-        # runtime version check below rather than inherited into a new deployment.
-        from .harness_archive import read_file
-        version = json.loads(read_file(exe.parent / "resources/app.asar", "package.json"))["version"]
-        if version != "0.2.1-rc.2":
-            raise ChatterError("Harness 版本尚未验证隔离兼容性；当前支持 0.2.1-rc.2")
-        bundle = yaml.load(read_file(exe.parent / "resources/app.asar", "dsh/node_modules/@deepseek-ai/dsh-sdk-minimal/cordis.patch.yml"), Loader=yaml.BaseLoader)
-        rows = bundle[0]["insert"]
-        known = SAFE_ROWS | {"sdk-jsonrpc-server", "session-log-deepseek", "plugin-package-inventory-deepseek", "tool-fs", "tool-working-directory", "subprocess", "pty", "terminal-bash", "terminal-pwsh", "persistent-bash", "persistent-pwsh", "mcp-resources"}
-        if {r["id"] for r in rows} != known:
-            raise ChatterError("Harness 模板能力已变化，隔离检查未通过")
-        patch = [{"id": r["id"], "disabled": r["id"] not in SAFE_ROWS} for r in rows]
+        rows = qualified_minimal_rows(exe)
+        safe_rows = SAFE_ROWS if self.persist_session else SAFE_ROWS - {"sessions"}
+        patch = [{"id": r["id"], "disabled": r["id"] not in safe_rows} for r in rows]
         patch += [{"id": "system-prompt", "config": {"includeHarnessIdentity": False, "includeRuntimeContext": False, "personaPrefix": policy}},
                   {"id": "llm-deepseek", "config": {"apiKeyEnv": "E_CHATTER_DEEPSEEK_KEY", "streamIdleTimeoutMs": 120000}},
                   {"id": "sandbox-policy", "config": {"mode": "read-only", "workspaceRoot": str(directory)}},
@@ -92,14 +100,14 @@ class DeepSeek:
             raise
         return rpc
 
-    def connect(self):
+    def connect(self, cancelled=None):
         with self.lock:
             if not self.control or self.control.process.poll() is not None:
-                self.control = self._open()
+                self.control = self._open(cancelled=cancelled)
             return self.control
 
-    def account(self):
-        value = self.connect().request("e-chatter/status", {})
+    def account(self, cancelled=None):
+        value = self.connect(cancelled).request("e-chatter/status", {}, cancelled=cancelled)
         models = []
         for index, model in enumerate(value["models"]):
             reasoning = model.get("info", {}).get("reasoning", {}) or {}

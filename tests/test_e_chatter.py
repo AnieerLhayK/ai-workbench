@@ -26,6 +26,58 @@ def response(reply="test", **values):
     return dict(reply=reply, status="completed", files=[], diagnosis="", handoff="", build_intake="") | values
 
 
+def test_batch_move_preserves_nested_selection_and_rejects_cycles(service):
+    top = service.folder('top')
+    child = service.folder('child', top['id'])
+    target = service.folder('target')
+    session = service.session('chat', child['id'])
+    items = [{'kind': 'folder', 'id': top['id']}, {'kind': 'session', 'id': session['id']}]
+    with pytest.raises(ChatterError):
+        service.move_items(items, child['id'])
+    assert service.store.get('folders', top['id'])['parent'] is None
+    with pytest.raises(ChatterError):
+        service.move_items(items + [{'kind': 'session', 'id': 'missing'}], target['id'])
+    assert service.store.get('folders', top['id'])['parent'] is None
+    service.move_items(items, target['id'])
+    assert service.store.get('folders', top['id'])['parent'] == target['id']
+    assert service.store.get('sessions', session['id'])['folder'] == child['id']
+    service.move_items([{'kind': 'folder', 'id': top['id']}], None)
+    assert service.store.get('folders', top['id'])['parent'] is None
+
+
+def test_batch_move_rolls_back_if_write_fails(service, monkeypatch):
+    one = service.session('one')
+    two = service.session('two')
+    destination = service.folder('destination')
+    update = service.store.update
+    count = 0
+    def failing_update(*args, **kwargs):
+        nonlocal count
+        count += 1
+        if count == 2:
+            raise RuntimeError('simulated write failure')
+        return update(*args, **kwargs)
+    monkeypatch.setattr(service.store, 'update', failing_update)
+    with pytest.raises(RuntimeError):
+        service.move_items([{'kind': 'session', 'id': one['id']}, {'kind': 'session', 'id': two['id']}], destination['id'])
+    assert service.store.get('sessions', one['id'])['folder'] is None
+    assert service.store.get('sessions', two['id'])['folder'] is None
+
+
+def test_batch_move_persists_after_restart(tmp_path):
+    root = tmp_path / 'data'
+    first = Service(root)
+    folder = first.folder('target')
+    session = first.session('session')
+    first.move_items([{'kind': 'session', 'id': session['id']}], folder['id'])
+    first.store.close()
+    reopened = Service(root)
+    try:
+        assert reopened.store.get('sessions', session['id'])['folder'] == folder['id']
+    finally:
+        reopened.store.close()
+
+
 def role(service, session, kind):
     confirmation = service.prepare_engineering(session["id"], kind)
     return service.start_engineering(session["id"], kind, confirmation["token"])

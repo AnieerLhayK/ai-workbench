@@ -17,6 +17,12 @@ host can pass an explicitly approved external directory with `--data`. Changing 
 directory does not move or delete the old directory. Themes persist in Settings.
 `--demo` uses synthetic memory-only examples and never loads the real library.
 
+In the session tree, Ctrl selects multiple entries and Shift selects a visible
+range. Drag the selection onto a category or the root drop area to move it.
+Selecting both a category and its contents preserves their nesting. A move that
+would put a category inside itself or a descendant is rejected as a whole.
+The existing management dialog remains available for keyboard-based moves.
+
 ## Agent connections and Models
 
 The bottom-left connection status opens Settings. Agent selection is global and

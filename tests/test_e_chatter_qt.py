@@ -46,6 +46,12 @@ def test_native_webchannel_diagnosis_and_confirmation(request, tmp_path):
         wait_for(lambda: bool(loaded))
         assert loaded[-1], ("built local frontend failed to load", loading_errors)
         wait_for(lambda: javascript("!!Array.from(document.querySelectorAll('button')).find(x=>x.textContent==='doctor')"))
+        source = next(s for s in service.snapshot()['sessions'] if s['title'] == '改写练习')
+        destination = next(f for f in service.snapshot()['folders'] if f['name'] == '角色实验')
+        javascript("Array.from(document.querySelectorAll('.session-row')).find(x=>x.textContent.includes('改写练习')).dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer:new DataTransfer()}))")
+        wait_for(lambda: javascript("document.querySelector('.tree-drop-root').textContent.includes('1 项')"))
+        javascript("Array.from(document.querySelectorAll('.folder-row')).find(x=>x.textContent.includes('角色实验')).dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:new DataTransfer()}))")
+        wait_for(lambda: service.store.get('sessions', source['id'])['folder'] == destination['id'])
         javascript("Array.from(document.querySelectorAll('button')).find(x=>x.textContent==='doctor').click()")
         wait_for(lambda: len(service.snapshot()["records"]) == 2)
         assert {r["kind"] for r in service.snapshot()["records"]} == {"diagnosis", "handoff"}

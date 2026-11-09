@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QMessageBox, QApplication
 
 from ..app import create_application, WindowInstance
 from .codex import CodexAdapter, DemoAdapter
+from .providers import Providers, DeepSeekAdapter
 from .cycles import Cycles
 from .jobs import GenerationJobs
 from .library import DiaryLibrary, DiaryError, load_json
@@ -54,7 +55,7 @@ def create_window(config=None, *, demo=False):
         settings.update()  # Persist the first-run anchor once, not on each launch.
     sources = Sources(settings, library, config)
     cycles, reports = Cycles(settings), Reports(settings)
-    adapter = DemoAdapter() if demo else CodexAdapter(config)
+    adapter = DemoAdapter() if demo else Providers(config, {"codex": CodexAdapter(config), "deepseek": DeepSeekAdapter(config)})
     jobs = GenerationJobs(adapter, sources, library, settings, reports, cycles, config)
     return DiaryWindow(library, settings, sources, jobs, reports, cycles, config)
 

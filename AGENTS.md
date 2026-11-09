@@ -11,14 +11,15 @@ to Workspace for review and synchronization by its registered publisher.
 
 Read [the maintenance contract](shared/maintenance.md) before changes. Load
 [the maintenance skill](skills/ai-workbench-maintainer/SKILL.md) when developing,
-testing or preparing a projection. It is development-only and unexposed here.
+testing or preparing a projection. It has no general platform projection; the
+guarded DeepSeek Workspace entry may bind it as its acting skill.
 
 For trial cards, bound CLI, assistant proposals, approvals and confirmed commands, read
 [experiment-box](docs/experiment-box.md) for its storage, launch and native
 acceptance contracts; it is a separate entry from muti-ai.
 
 For e-Diary read [its contract](docs/e-diary.md). It is a separate Qt entry with
-external text revisions, bounded evidence collection and cancellable Codex jobs.
+external text revisions, bounded evidence collection and cancellable generation jobs.
 Its task-submitting Adapter must not change the existing terminal launchers'
 handoff-only contract. Demo must not read real sessions, roots or live styles.
 

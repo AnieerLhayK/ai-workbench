@@ -25,7 +25,7 @@ configuration, qualified limits and the custom-runner receipt contract.
 
 The independent **e-Diary** Qt application edits Markdown/plain-text diaries and
 reads development, work and personal summaries directly by period. Optional
-in-app loops use the existing local Codex CLI; topic reports produce evidence
+in-app loops use the existing local Codex CLI or a supported DeepSeek Harness; topic reports produce evidence
 packages with text, data, PDF and source-backed charts. Personal data and custom live writing resources stay outside source; the general
 prose discipline is tracked and included in distributions. It does not desensitize material.
 

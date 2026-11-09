@@ -28,6 +28,14 @@ export class DemoTransport implements Transport {
     if (method === 'models.save') {if (s.tasks.some(t => t.session_id === args.session_id && t.status === 'running')) throw new Error('请先停止当前会话的生成'); if (session) session.model_preferences = {...session.model_preferences, [String(args.agent)]: {model: args.model, effort: args.effort}}; return this.snapshot() as T;}
     if (method === 'provider.authorize') {if (session) session.authorized_agents = [...(session.authorized_agents || ['codex']), args.agent as Agent]; return this.snapshot() as T;}
     if (method === 'settings.save') { if ('theme' in args) s.settings.theme = args.theme as 'light' | 'dark'; if ('deepseek_auth' in args) s.settings.deepseek_auth = args.deepseek_auth as 'account' | 'api_key'; }
+    else if (method === 'tree.move') {
+      const items = args.items as {kind: 'folder' | 'session'; id: string}[]; const dest = args.destination as string | null;
+      const chosen = new Set(items.filter(i => i.kind === 'folder').map(i => i.id));
+      if (!items.length || (dest && !s.folders.some(f => f.id === dest))) throw new Error('目标分类不存在');
+      for (const item of items) if (!(item.kind === 'folder' ? s.folders : s.sessions).some(x => x.id === item.id)) throw new Error('移动项目不存在');
+      for (let cursor = dest; cursor; cursor = s.folders.find(f => f.id === cursor)?.parent || null) if (chosen.has(cursor)) throw new Error('分类不能放入自身或子分类');
+      for (const item of items) {const row = item.kind === 'folder' ? s.folders.find(f => f.id === item.id)! : s.sessions.find(x => x.id === item.id)!; let cursor = 'parent' in row ? row.parent : row.folder; while (cursor && !chosen.has(cursor)) cursor = s.folders.find(f => f.id === cursor)?.parent || null; if (!cursor) {if ('parent' in row) row.parent = dest; else row.folder = dest;}}
+    }
     else if (method === 'session.save') {
       const row = s.sessions.find(row => row.id === args.record_id);
       if (row) Object.assign(row, {title: args.title, folder: args.folder || null});

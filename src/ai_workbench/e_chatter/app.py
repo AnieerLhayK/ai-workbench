@@ -149,6 +149,8 @@ class Bridge(QObject):
             return s.snapshot()
         if method == "folder.save":
             s.folder(**args)
+        elif method == "tree.move":
+            s.move_items(**args)
         elif method == "session.save":
             session = s.session(**args)
             return {"session_id": session["id"], "snapshot": s.snapshot()}

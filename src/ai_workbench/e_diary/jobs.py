@@ -120,8 +120,10 @@ class GenerationJobs(QObject):
             current = self.library.read(request["entry_id"])
             request["expected_hash"] = current["hash"]
             request["expected_file"] = current["file"]
+        adapter = self.adapter.snapshot() if hasattr(self.adapter, "snapshot") else self.adapter
         self.cancelled = threading.Event()
-        self.state = {"pending": True, "id": uuid4().hex, "stage": "准备资料", "error": None, "request": request}
+        provider = "演示" if self.config.get("demo") else {"codex": "Codex", "deepseek": "DeepSeek Harness"}.get(self.config.get("provider", "codex"), "未知服务")
+        self.state = {"pending": True, "id": uuid4().hex, "stage": f"准备资料 · {provider}", "error": None, "request": request}
         job_id = self.state["id"]
         self._emit()
         def work():
@@ -144,12 +146,12 @@ class GenerationJobs(QObject):
                 if not bundle["documents"] and not self.config.get("demo"):
                     raise DiaryError("该时期没有可用材料；请补充日记、导入对话或修复资料来源")
                 task = self._prompt(request, bundle, style)
-                self._progress.emit("Codex 正在生成正文")
-                result = self.adapter.generate(task, directory, self.cancelled, self._progress.emit)
+                self._progress.emit(f"{provider} 正在生成正文")
+                result = adapter.generate(task, directory, self.cancelled, self._progress.emit)
                 if self.cancelled.is_set():
                     raise DiaryError("任务已取消")
                 if not isinstance(result.get("title"), str) or not isinstance(result.get("body"), str) or not result["body"].strip():
-                    raise DiaryError("Codex 返回的正文格式无效")
+                    raise DiaryError(f"{provider} 返回的正文格式无效")
                 if request["kind"] in ("development", "work", "personal") and len(re.sub(r"\s", "", result["body"])) > 2000:
                     raise DiaryError("回顾正文超过 2000 字，未保存；请重试并要求精简主线")
                 outcome = {"result": result, "bundle": bundle, "fingerprints": fingerprints, "directory": directory, "error": None}

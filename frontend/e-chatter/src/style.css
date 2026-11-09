@@ -20,3 +20,8 @@
 
 /* Keep connection controls visible at the accepted 1536x1024 desktop size. */
 @media(min-width:1100px){.settings-content{padding-top:10px}.setting-row:not(.agent-settings){padding:14px 0;gap:20px}.setting-row:not(.agent-settings) h2{font-size:23px;margin:0 0 6px}.setting-row:not(.agent-settings) p{font-size:13px;line-height:1.4}.setting-row:not(.agent-settings) .setting-value p{margin-top:8px}.setting-row:not(.agent-settings) .theme-options{flex-direction:row;max-width:none}.setting-row:not(.agent-settings) .button-row button{font-size:15px;min-height:40px}.agent-settings{padding-top:20px;grid-template-columns:30% 1fr}.agent-settings h2{font-size:24px}.agent-settings .setting-value>p,.auth-pane p{font-size:13px}.agent-options{margin-bottom:10px}.agent-options small{display:inline;margin-left:10px}.agent-settings h3{margin:10px 0}.auth-pane{padding:14px}.auth-tabs{margin-top:12px}.connection-actions{margin-top:14px;padding-top:12px}}
+.composer-controls,.send-controls,.skill-toolbar,.skill-left{flex-wrap:wrap;min-width:0;gap:8px}.composer-controls>*{min-width:0}.skill-toolbar{height:auto}.drop-target{outline:2px solid var(--blue);outline-offset:-2px}.tree-drop-root{padding:8px 12px;font-size:13px}
+
+@media (min-width:601px) and (max-width:900px){.tree-row:focus-within .row-action,.tree-row:focus-within .row-actions{display:flex}}
+.message-tools{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:10px}.message-tools .message-tool{margin-top:0}
+.current-session{box-shadow:inset 3px 0 var(--blue)}

@@ -2,6 +2,7 @@
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
+import threading
 from uuid import uuid4
 
 from PySide6.QtCore import QDate, Qt, QUrl, QTime, Signal
@@ -9,7 +10,7 @@ from PySide6.QtGui import QDesktopServices, QPixmap
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel,
     QPushButton, QComboBox, QLineEdit, QSpinBox, QCheckBox, QFileDialog, QTextEdit,
     QTextBrowser, QListWidget, QTabWidget, QDialog, QDialogButtonBox, QMessageBox,
-    QTableWidget, QTableWidgetItem, QHeaderView, QDateEdit, QSplitter, QStackedWidget, QTimeEdit, QAbstractItemView, QScrollArea)
+    QTableWidget, QTableWidgetItem, QHeaderView, QDateEdit, QSplitter, QStackedWidget, QTimeEdit, QAbstractItemView, QScrollArea, QInputDialog)
 from PySide6.QtPdf import QPdfDocument
 from PySide6.QtPdfWidgets import QPdfView
 
@@ -58,10 +59,21 @@ def period_request(parent, kind):
 
 
 class Preferences(QWidget):
+    auth_finished = Signal(str)
+    auth_url = Signal(str)
+    runtime_saved = Signal()
+
     def __init__(self, settings, config, on_theme):
         super().__init__()
         self.settings, self.config = settings, config
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        body = QWidget()
+        scroll.setWidget(body)
+        outer.addWidget(scroll)
+        layout = QVBoxLayout(body)
         layout.setContentsMargins(32, 26, 32, 26)
         layout.addWidget(heading("设置"))
         form = QFormLayout()
@@ -71,10 +83,21 @@ class Preferences(QWidget):
         self.theme.setCurrentIndex(self.theme.findData(settings.data["theme"]))
         self.theme.currentIndexChanged.connect(lambda: on_theme(self.theme.currentData()))
         form.addRow("外观", self.theme)
+        self.provider = QComboBox()
+        self.provider.addItem("Codex", "codex")
+        self.provider.addItem("DeepSeek Harness", "deepseek")
+        self.provider.setCurrentIndex(max(0, self.provider.findData(config.get("provider", "codex"))))
+        form.addRow("生成服务商", self.provider)
+        self.auth = QComboBox()
+        self.auth.addItem("官方账号", "account")
+        self.auth.addItem("API Key", "api_key")
+        self.auth.setCurrentIndex(max(0, self.auth.findData(config.get("deepseek_auth", "account"))))
+        form.addRow("DeepSeek 认证方式", self.auth)
         self.fields = {}
         for key, label in (("codex_cli", "Codex CLI"), ("prose_path", "prose.md（留空使用内置规范）"), ("zf_root", "user-style 同步源目录"),
                            ("personal_archive_root", "个人档案目录（可选）"),
-                           ("staging_root", "临时任务目录"), ("model", "模型（留空沿用 Codex）")):
+                           ("staging_root", "临时任务目录"), ("model", "Codex 模型（留空沿用默认）"),
+                           ("deepseek_cli", "DeepSeek Harness 路径（留空使用默认）"), ("deepseek_model", "DeepSeek 模型（留空使用默认）")):
             field = QLineEdit(str(config.get(key, "")))
             if key == "prose_path":
                 field.setPlaceholderText("内置 prose.md；可填写自定义文件的绝对路径")
@@ -87,6 +110,24 @@ class Preferences(QWidget):
         save = QPushButton("保存运行设置")
         save.clicked.connect(self.save)
         layout.addWidget(save)
+        auth_buttons = QHBoxLayout()
+        self.login_button = QPushButton("登录 DeepSeek 账号")
+        self.login_button.clicked.connect(lambda: self.start_auth("login"))
+        self.key_button = QPushButton("设置 DeepSeek API Key")
+        self.key_button.clicked.connect(self.save_key)
+        self.cancel_login_button = QPushButton("取消登录")
+        self.cancel_login_button.clicked.connect(lambda: self.auth_cancel.set())
+        self.cancel_login_button.setEnabled(False)
+        for button in (self.login_button, self.key_button, self.cancel_login_button):
+            auth_buttons.addWidget(button)
+        layout.addLayout(auth_buttons)
+        self.auth_cancel = threading.Event()
+        self.auth_busy = False
+        self.auth_finished.connect(self.finish_auth)
+        self.auth_url.connect(self.open_auth_url)
+        if config.get("demo"):
+            self.login_button.setEnabled(False)
+            self.key_button.setEnabled(False)
         self.style = StyleResources(config)
         self.style_status = QLabel()
         self.style_status.setWordWrap(True)
@@ -100,6 +141,54 @@ class Preferences(QWidget):
         self.message.setWordWrap(True)
         layout.addWidget(self.message)
         layout.addStretch()
+
+    def save_key(self):
+        value, ok = QInputDialog.getText(self, "DeepSeek API Key", "输入 API Key：", QLineEdit.EchoMode.Password)
+        if ok and value.strip():
+            self.start_auth("save_key", key=value.strip())
+
+    def start_auth(self, action, **values):
+        if self.config.get("demo") or self.auth_busy:
+            return
+        expected = "account" if action == "login" else "api_key"
+        if self.config.get("deepseek_auth", "account") != expected:
+            self.message.setText("请先选择并保存对应的 DeepSeek 认证方式。")
+            return
+        from .providers import DeepSeekAdapter
+        self.auth_busy = True
+        self.auth_cancel.clear()
+        self.login_button.setEnabled(False)
+        self.key_button.setEnabled(False)
+        self.cancel_login_button.setEnabled(action == "login")
+        self.message.setText("正在连接 DeepSeek Harness…")
+        adapter = DeepSeekAdapter(dict(self.config))
+        def work():
+            try:
+                adapter.authenticate(action, notify=self.auth_url.emit, cancelled=self.auth_cancel, **values)
+                message = "DeepSeek 认证已完成。"
+            except Exception as error:
+                message = str(error) if isinstance(error, DiaryError) else "DeepSeek 认证失败，请检查配置。"
+            try:
+                self.auth_finished.emit(message)
+            except RuntimeError:
+                pass  # The window can close while the provider is stopping.
+        threading.Thread(target=work, daemon=True).start()
+
+    def finish_auth(self, message):
+        self.auth_busy = False
+        self.login_button.setEnabled(not self.config.get("demo"))
+        self.key_button.setEnabled(not self.config.get("demo"))
+        self.cancel_login_button.setEnabled(False)
+        self.message.setText(message)
+
+    def open_auth_url(self, value):
+        url = QUrl(value)
+        host = url.host().lower()
+        if url.scheme() == "https" and (host == "deepseek.com" or host.endswith(".deepseek.com")):
+            QDesktopServices.openUrl(url)
+        else:
+            self.auth_cancel.set()
+            self.message.setText("DeepSeek 返回了不受支持的登录地址。")
 
     def refresh_style(self):
         status = self.style.status()
@@ -118,6 +207,11 @@ class Preferences(QWidget):
     def save(self):
         runtime = {k: w.text().strip() for k, w in self.fields.items()}
         runtime["read_codex"] = self.read_sessions.isChecked()
+        runtime["provider"] = self.provider.currentData()
+        runtime["deepseek_auth"] = self.auth.currentData()
+        if runtime["deepseek_cli"] and not Path(runtime["deepseek_cli"]).is_absolute():
+            self.message.setText("DeepSeek Harness 路径必须为绝对路径，或留空使用默认路径")
+            return
         if runtime["personal_archive_root"] and not Path(runtime["personal_archive_root"]).is_absolute():
             self.message.setText("个人档案目录必须为绝对路径；留空停用")
             return
@@ -134,6 +228,7 @@ class Preferences(QWidget):
             self.settings.update(runtime=runtime)
             self.config.update(runtime)
             self.message.setText("运行设置已保存，下次任务使用最新配置。")
+            self.runtime_saved.emit()
         except OSError as error:
             self.message.setText(str(error))
 
@@ -431,6 +526,9 @@ class ReportPage(QWidget):
         tabs = QTabWidget()
         form_widget = QWidget()
         form = QVBoxLayout(form_widget)
+        self.provider_label = QLabel()
+        self.refresh_provider()
+        form.addWidget(self.provider_label)
         form.addWidget(QLabel("主题"))
         topic_row = QHBoxLayout()
         self.topic = QComboBox()
@@ -529,6 +627,11 @@ class ReportPage(QWidget):
         self.current_report = None
         self.refresh()
         jobs.observe(self.job_changed)
+
+    def refresh_provider(self):
+        config = self.jobs.config
+        name = "演示" if config.get("demo") else {"codex": "Codex", "deepseek": "DeepSeek Harness"}.get(config.get("provider", "codex"), "未知服务")
+        self.provider_label.setText("生成服务商：" + name)
 
     def refresh(self):
         self.topic.clear()

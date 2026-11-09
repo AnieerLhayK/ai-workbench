@@ -130,6 +130,9 @@ class DiaryWindow(QMainWindow):
         self.generate.setObjectName("primary")
         self.generate.clicked.connect(self.manual_generate)
         list_layout.addWidget(self.generate)
+        self.provider_label = QLabel()
+        self.provider_label.setWordWrap(True)
+        list_layout.addWidget(self.provider_label)
         self.list = QListWidget()
         self.list.setItemDelegate(EntryDelegate(settings, self.list))
         self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -156,6 +159,9 @@ class DiaryWindow(QMainWindow):
         self.cycle_page.settings_changed.connect(self.check_cycles)
         self.report_page = ReportPage(reports, settings, jobs)
         self.preferences = Preferences(settings, config, self.apply_theme)
+        self.preferences.runtime_saved.connect(self.refresh_provider)
+        self.preferences.runtime_saved.connect(self.report_page.refresh_provider)
+        self.refresh_provider()
         self.extra_pages = {"sources": self.source_page, "cycles": self.cycle_page,
                             "report": self.report_page, "settings": self.preferences}
         for page in self.extra_pages.values(): self.pages.addWidget(page)
@@ -185,6 +191,10 @@ class DiaryWindow(QMainWindow):
                 switch.colors = dict(PALETTES["dark" if is_dark(theme) else "light"], accent="#397eaf")
                 switch.update()
         self.editor.update()
+
+    def refresh_provider(self):
+        name = "演示" if self.config.get("demo") else {"codex": "Codex", "deepseek": "DeepSeek Harness"}.get(self.config.get("provider", "codex"), "未知服务")
+        self.provider_label.setText("生成服务商：" + name)
 
     def navigate(self, key):
         if not self.editor.save():
@@ -345,4 +355,5 @@ class DiaryWindow(QMainWindow):
             event.ignore()
             return
         self.cycle_timer.stop()
+        self.preferences.auth_cancel.set()
         event.accept()
