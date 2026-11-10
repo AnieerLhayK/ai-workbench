@@ -39,7 +39,7 @@ old messages do not acquire invented model metadata.
 
 Codex uses official app-server account/model interfaces and preserves its shared
 isolation checks. DeepSeek currently qualifies the official Windows Desktop
-`0.2.1-rc.2` bundled command runtime. Choose `DeepSeek Harness.exe` or its installed
+`0.2.1-rc.2` or `0.2.2-rc.1` bundled command runtime. Choose `DeepSeek Harness.exe` or its installed
 `resources/runtime/cli/bin/dsh.cmd`; retired pilot wrappers are rejected. Other
 runtime versions stop before material submission until qualified. Nothing installs
 or changes independent Harness Desktop plugins or data.

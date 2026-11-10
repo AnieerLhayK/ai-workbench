@@ -15,7 +15,7 @@ from . import VERSION
 from .files import ChatterError, atomic, plain_path, uid
 
 
-SAFE_ROWS = {"sdk-app-startup", "deepseek-llm-api-extensions", "llm-deepseek", "sandbox", "filesystem", "attachment-local", "working-directory", "session-projection", "token-meter", "compaction-basic", "image-offload", "sandbox-policy", "timer", "llm", "session", "session-title", "system-prompt", "tools", "agent", "llm-retry", "jobs", "agent-loop", "sessions"}
+SAFE_ROWS = {"sdk-app-startup", "deepseek-llm-api-extensions", "llm-deepseek", "sandbox", "filesystem", "attachment-local", "working-directory", "session-projection", "token-meter", "compaction-basic", "image-offload", "sandbox-policy", "timer", "llm", "session", "session-title", "system-prompt", "tools", "agent", "llm-retry", "jobs", "agent-loop", "sessions", "tool-executor-native"}
 
 
 def qualified_minimal_rows(executable):
@@ -23,11 +23,21 @@ def qualified_minimal_rows(executable):
     from .harness_archive import read_file
     archive = Path(executable).parent / "resources/app.asar"
     version = json.loads(read_file(archive, "package.json"))["version"]
-    if version != "0.2.1-rc.2":
-        raise ChatterError("Harness 版本尚未验证隔离兼容性；当前支持 0.2.1-rc.2")
+    if version not in {"0.2.1-rc.2", "0.2.2-rc.1"}:
+        raise ChatterError("Harness 版本尚未验证隔离兼容性；当前支持 0.2.1-rc.2 和 0.2.2-rc.1")
     rows = yaml.load(read_file(archive, "dsh/node_modules/@deepseek-ai/dsh-sdk-minimal/cordis.patch.yml"), Loader=yaml.BaseLoader)[0]["insert"]
-    known = SAFE_ROWS | {"sdk-jsonrpc-server", "session-log-deepseek", "plugin-package-inventory-deepseek", "tool-fs", "tool-working-directory", "subprocess", "pty", "terminal-bash", "terminal-pwsh", "persistent-bash", "persistent-pwsh", "mcp-resources"}
+    known = (SAFE_ROWS - {"tool-executor-native"}) | {"sdk-jsonrpc-server", "session-log-deepseek", "plugin-package-inventory-deepseek", "tool-fs", "tool-working-directory", "subprocess", "pty", "terminal-bash", "terminal-pwsh", "persistent-bash", "persistent-pwsh", "mcp-resources"}
+    if version == "0.2.2-rc.1":
+        known |= {"tool-executor-native", "session-checkpoint-policy"}
     if {row["id"] for row in rows} != known or len(rows) != len(known):
+        raise ChatterError("Harness 模板能力已变化，隔离检查未通过")
+    if version == "0.2.2-rc.1" and any(
+        next(row for row in rows if row["id"] == row_id).get("name") != expected
+        for row_id, expected in {
+            "tool-executor-native": "@deepseek-ai/dsh-tool-executor-native",
+            "session-checkpoint-policy": "@deepseek-ai/dsh-session-checkpoint-policy",
+        }.items()
+    ):
         raise ChatterError("Harness 模板能力已变化，隔离检查未通过")
     return rows
 

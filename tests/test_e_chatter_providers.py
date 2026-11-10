@@ -202,13 +202,36 @@ def test_unqualified_harness_version_is_rejected_before_profile_load(monkeypatch
     with pytest.raises(ChatterError, match="尚未验证"):
         deepseek.qualified_minimal_rows(tmp_path / "DeepSeek Harness.exe")
 
+def test_022_profile_rejects_substituted_native_executor(monkeypatch, tmp_path):
+    import json
+    import yaml
+    from ai_workbench.e_chatter import deepseek
+    from ai_workbench.e_chatter.files import ChatterError
+    old = (deepseek.SAFE_ROWS - {"tool-executor-native"}) | {"sdk-jsonrpc-server", "session-log-deepseek", "plugin-package-inventory-deepseek", "tool-fs", "tool-working-directory", "subprocess", "pty", "terminal-bash", "terminal-pwsh", "persistent-bash", "persistent-pwsh", "mcp-resources"}
+    rows = [{"id": value} for value in old] + [
+        {"id": "tool-executor-native", "name": "untrusted-executor"},
+        {"id": "session-checkpoint-policy", "name": "@deepseek-ai/dsh-session-checkpoint-policy"},
+    ]
+    monkeypatch.setattr("ai_workbench.e_chatter.harness_archive.read_file", lambda _, name: json.dumps({"version": "0.2.2-rc.1"}) if name == "package.json" else yaml.safe_dump([{"insert": rows}]))
+    with pytest.raises(ChatterError, match="模板能力"):
+        deepseek.qualified_minimal_rows(tmp_path / "DeepSeek Harness.exe")
+
 def test_duplicate_profile_row_is_rejected(monkeypatch, tmp_path):
     import json
     import yaml
     from ai_workbench.e_chatter import deepseek
     from ai_workbench.e_chatter.files import ChatterError
-    expected = deepseek.SAFE_ROWS | {"sdk-jsonrpc-server", "session-log-deepseek", "plugin-package-inventory-deepseek", "tool-fs", "tool-working-directory", "subprocess", "pty", "terminal-bash", "terminal-pwsh", "persistent-bash", "persistent-pwsh", "mcp-resources"}
+    expected = (deepseek.SAFE_ROWS - {"tool-executor-native"}) | {"sdk-jsonrpc-server", "session-log-deepseek", "plugin-package-inventory-deepseek", "tool-fs", "tool-working-directory", "subprocess", "pty", "terminal-bash", "terminal-pwsh", "persistent-bash", "persistent-pwsh", "mcp-resources"}
     rows = [{"id": name} for name in expected] + [{"id": "tool-fs"}]
     monkeypatch.setattr("ai_workbench.e_chatter.harness_archive.read_file", lambda _, name: json.dumps({"version": "0.2.1-rc.2"}) if name == "package.json" else yaml.safe_dump([{"insert": rows}]))
     with pytest.raises(ChatterError, match="模板能力"):
         deepseek.qualified_minimal_rows(tmp_path / "DeepSeek Harness.exe")
+
+def test_021_profile_remains_qualified_without_native_executor(monkeypatch, tmp_path):
+    import json
+    import yaml
+    from ai_workbench.e_chatter import deepseek
+    expected = (deepseek.SAFE_ROWS - {"tool-executor-native"}) | {"sdk-jsonrpc-server", "session-log-deepseek", "plugin-package-inventory-deepseek", "tool-fs", "tool-working-directory", "subprocess", "pty", "terminal-bash", "terminal-pwsh", "persistent-bash", "persistent-pwsh", "mcp-resources"}
+    rows = [{"id": value} for value in expected]
+    monkeypatch.setattr("ai_workbench.e_chatter.harness_archive.read_file", lambda _, name: json.dumps({"version": "0.2.1-rc.2"}) if name == "package.json" else yaml.safe_dump([{"insert": rows}]))
+    assert {row["id"] for row in deepseek.qualified_minimal_rows(tmp_path / "DeepSeek Harness.exe")} == expected
