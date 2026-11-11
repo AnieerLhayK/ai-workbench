@@ -62,6 +62,7 @@ class Preferences(QWidget):
     auth_finished = Signal(str)
     auth_url = Signal(str)
     runtime_saved = Signal()
+    capabilities_ready = Signal(str, object)
 
     def __init__(self, settings, config, on_theme):
         super().__init__()
@@ -76,53 +77,132 @@ class Preferences(QWidget):
         layout = QVBoxLayout(body)
         layout.setContentsMargins(32, 26, 32, 26)
         layout.addWidget(heading("设置"))
-        form = QFormLayout()
+        category_layout = QHBoxLayout()
+        self.category_list = QListWidget()
+        self.category_list.setMaximumWidth(160)
+        self.categories = QStackedWidget()
+        category_layout.addWidget(self.category_list)
+        category_layout.addWidget(self.categories, 1)
+        layout.addLayout(category_layout)
+        forms = {}
+        for name in ("Agent", "路径", "写作", "外观"):
+            page = QWidget()
+            page_layout = QVBoxLayout(page)
+            if name == "Agent":
+                section_heading = QLabel("Agent（生成助手）")
+                section_heading.setObjectName("settingsHeading")
+                page_layout.addWidget(section_heading)
+                description = QLabel("配置生成服务商、认证方式、模型和运行环境。")
+                description.setObjectName("muted")
+                description.setWordWrap(True)
+                page_layout.addWidget(description)
+            forms[name] = QFormLayout()
+            page_layout.addLayout(forms[name])
+            self.categories.addWidget(page)
+            self.category_list.addItem(name)
+        self.category_list.currentRowChanged.connect(self.categories.setCurrentIndex)
+        self.category_list.setCurrentRow(0)
+        form = forms["外观"]
         self.theme = QComboBox()
         for label, value in (("浅色", "light"), ("深色", "dark"), ("跟随系统", "system")):
             self.theme.addItem(label, value)
         self.theme.setCurrentIndex(self.theme.findData(settings.data["theme"]))
         self.theme.currentIndexChanged.connect(lambda: on_theme(self.theme.currentData()))
         form.addRow("外观", self.theme)
+        form = forms["Agent"]
         self.provider = QComboBox()
         self.provider.addItem("Codex", "codex")
         self.provider.addItem("DeepSeek Harness", "deepseek")
         self.provider.setCurrentIndex(max(0, self.provider.findData(config.get("provider", "codex"))))
         form.addRow("生成服务商", self.provider)
+        self.agent_sections = {}
+        agent_layout = self.categories.widget(0).layout()
+        for agent, title in (("deepseek", "DeepSeek Harness"), ("codex", "Codex")):
+            button = QPushButton("▾  " + title)
+            button.setObjectName("settingsSection")
+            button.setCheckable(True)
+            button.setChecked(agent == "deepseek")
+            content = QWidget()
+            content_form = QFormLayout(content)
+            button.toggled.connect(content.setVisible)
+            button.toggled.connect(lambda checked, widget=button, label=title: widget.setText(("▾  " if checked else "▸  ") + label))
+            content.setVisible(agent == "deepseek")
+            button.setText(("▾  " if agent == "deepseek" else "▸  ") + title)
+            agent_layout.addWidget(button)
+            agent_layout.addWidget(content)
+            self.agent_sections[agent] = content_form
+        form = self.agent_sections["deepseek"]
         self.auth = QComboBox()
         self.auth.addItem("官方账号", "account")
         self.auth.addItem("API Key", "api_key")
         self.auth.setCurrentIndex(max(0, self.auth.findData(config.get("deepseek_auth", "account"))))
-        form.addRow("DeepSeek 认证方式", self.auth)
+        self.auth.currentIndexChanged.connect(self.auth_mode_changed)
+        form.addRow("认证方式", self.auth)
+        self.auth_status = QLabel("状态未知，请刷新状态")
+        self.auth_status.setWordWrap(True)
+        form.addRow("连接状态", self.auth_status)
+        self.auth_cancel = threading.Event()
+        self.auth_busy = False
+        self.login_button = QPushButton("登录 DeepSeek 账号")
+        self.login_button.setMaximumWidth(210)
+        self.login_button.clicked.connect(self.auth_action)
+        form.addRow("账号", self.login_button)
+        self.key_button = QPushButton("设置 API Key")
+        self.key_button.setMaximumWidth(210)
+        self.key_button.clicked.connect(self.key_action)
+        form.addRow("密钥", self.key_button)
+        self.cancel_login_button = self.login_button
+        self.verify_button = QPushButton("验证连接（可能产生少量费用）")
+        self.verify_button.setMaximumWidth(260)
+        self.verify_button.clicked.connect(self.verify_connection)
+        self.verify_button.setEnabled(not config.get("demo"))
+        form.addRow("验证", self.verify_button)
+        form.setRowVisible(self.key_button, self.auth.currentData() == "api_key")
+        form.setRowVisible(self.login_button, self.auth.currentData() == "account")
+        self.model_choices, self.effort_choices, self.capabilities = {}, {}, {}
+        self.loaded_agents = set()
+        self.effort_initialized = set()
+        self.refresh_epoch = {"codex": 0, "deepseek": 0}
+        for agent in ("deepseek", "codex"):
+            target = self.agent_sections[agent]
+            model, effort = QComboBox(), QComboBox()
+            existing = config.get("model" if agent == "codex" else "deepseek_model")
+            model.addItem(f"尚未确认：{existing}" if existing else "尚未读取可用模型", existing or None)
+            model.setEnabled(False)
+            effort.addItem("服务默认", None)
+            effort.setEnabled(False)
+            self.model_choices[agent], self.effort_choices[agent] = model, effort
+            model.currentIndexChanged.connect(lambda _index, name=agent: self.update_efforts(name))
+            target.addRow("模型", model)
+            target.addRow("推理强度", effort)
+            refresh = QPushButton("刷新可用模型与状态")
+            refresh.setMaximumWidth(210)
+            refresh.clicked.connect(lambda _checked=False, name=agent: self.refresh_capabilities(name))
+            refresh.setEnabled(not config.get("demo"))
+            target.addRow("服务能力", refresh)
+        self.capabilities_ready.connect(self.set_capabilities)
         self.fields = {}
         for key, label in (("codex_cli", "Codex CLI"), ("prose_path", "prose.md（留空使用内置规范）"), ("zf_root", "user-style 同步源目录"),
                            ("personal_archive_root", "个人档案目录（可选）"),
                            ("staging_root", "临时任务目录"), ("model", "Codex 模型（留空沿用默认）"),
-                           ("deepseek_cli", "DeepSeek Harness 路径（留空使用默认）"), ("deepseek_model", "DeepSeek 模型（留空使用默认）")):
+                           ("deepseek_cli", "Harness 路径"), ("deepseek_model", "DeepSeek 模型（留空使用默认）")):
+            if key in ("model", "deepseek_model"):
+                continue
             field = QLineEdit(str(config.get(key, "")))
             if key == "prose_path":
                 field.setPlaceholderText("内置 prose.md；可填写自定义文件的绝对路径")
             self.fields[key] = field
-            form.addRow(label, field)
+            target = self.agent_sections["codex"] if key == "codex_cli" else self.agent_sections["deepseek"] if key == "deepseek_cli" else forms["写作"] if key in ("prose_path", "zf_root") else forms["路径"]
+            target.addRow(label, field)
         self.read_sessions = QCheckBox("读取本机 Codex 历史（只读，不恢复原会话）")
         self.read_sessions.setChecked(config.get("read_codex", True))
-        form.addRow(self.read_sessions)
-        layout.addLayout(form)
+        self.agent_sections["codex"].addRow(self.read_sessions)
         save = QPushButton("保存运行设置")
+        self.save_button = save
+        save.setObjectName("primary")
+        save.setMaximumWidth(210)
         save.clicked.connect(self.save)
-        layout.addWidget(save)
-        auth_buttons = QHBoxLayout()
-        self.login_button = QPushButton("登录 DeepSeek 账号")
-        self.login_button.clicked.connect(lambda: self.start_auth("login"))
-        self.key_button = QPushButton("设置 DeepSeek API Key")
-        self.key_button.clicked.connect(self.save_key)
-        self.cancel_login_button = QPushButton("取消登录")
-        self.cancel_login_button.clicked.connect(lambda: self.auth_cancel.set())
-        self.cancel_login_button.setEnabled(False)
-        for button in (self.login_button, self.key_button, self.cancel_login_button):
-            auth_buttons.addWidget(button)
-        layout.addLayout(auth_buttons)
-        self.auth_cancel = threading.Event()
-        self.auth_busy = False
+        layout.addWidget(save, 0, Qt.AlignRight)
         self.auth_finished.connect(self.finish_auth)
         self.auth_url.connect(self.open_auth_url)
         if config.get("demo"):
@@ -131,43 +211,182 @@ class Preferences(QWidget):
         self.style = StyleResources(config)
         self.style_status = QLabel()
         self.style_status.setWordWrap(True)
-        layout.addWidget(self.style_status)
+        forms["写作"].addRow(self.style_status)
         self.sync_style_button = QPushButton("同步 user-style")
         self.sync_style_button.setEnabled(not config.get("demo"))
         self.sync_style_button.clicked.connect(self.sync_style)
-        layout.addWidget(self.sync_style_button)
+        forms["写作"].addRow(self.sync_style_button)
         self.refresh_style()
-        self.message = QLabel("默认使用内置 prose 规范；user-style 使用私人镜像，仅点击同步时更新。先保存源目录再同步。")
+        writing_note = QLabel("默认使用内置 prose 规范；user-style 使用私人镜像，仅点击同步时更新。先保存源目录再同步。")
+        writing_note.setWordWrap(True)
+        forms["写作"].addRow(writing_note)
+        self.message = QLabel("")
+        self.message.setObjectName("message")
         self.message.setWordWrap(True)
         layout.addWidget(self.message)
         layout.addStretch()
+        self._initial_refresh = False
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self._initial_refresh and not self.config.get("demo"):
+            self._initial_refresh = True
+            self.refresh_capabilities("deepseek")
+            self.refresh_capabilities("codex")
+
+    def auth_mode_changed(self):
+        if hasattr(self, "auth_status"):
+            self.capabilities.pop("deepseek", None)
+            self.loaded_agents.discard("deepseek")
+            self.effort_initialized.discard("deepseek")
+            self.refresh_epoch["deepseek"] += 1
+            self.auth_status.setText("认证方式已更改，请保存后刷新状态。")
+            self.agent_sections["deepseek"].setRowVisible(self.login_button, self.auth.currentData() == "account")
+            self.agent_sections["deepseek"].setRowVisible(self.key_button, self.auth.currentData() == "api_key")
+
+    def key_action(self):
+        if self.auth.currentData() == "api_key" and self.capabilities.get("deepseek", {}).get("connected"):
+            self.start_auth("clear_key")
+        else:
+            self.save_key()
 
     def save_key(self):
         value, ok = QInputDialog.getText(self, "DeepSeek API Key", "输入 API Key：", QLineEdit.EchoMode.Password)
         if ok and value.strip():
             self.start_auth("save_key", key=value.strip())
 
+    def refresh_capabilities(self, agent):
+        if self.config.get("demo") or (agent == "deepseek" and self.auth_busy):
+            return
+        self.refresh_epoch[agent] += 1
+        epoch = self.refresh_epoch[agent]
+        config = dict(self.config)
+        def work():
+            try:
+                from .providers import capabilities
+                value = capabilities(config, agent)
+                value["_epoch"] = epoch
+                try:
+                    self.capabilities_ready.emit(agent, value)
+                except RuntimeError:
+                    pass
+            except Exception:
+                try:
+                    self.capabilities_ready.emit(agent, {"_epoch": epoch, "error": "无法读取状态或模型，请检查服务和配置。"})
+                except RuntimeError:
+                    pass
+        threading.Thread(target=work, daemon=True).start()
+
+    def set_capabilities(self, agent, value):
+        if value.get("_epoch", self.refresh_epoch[agent]) != self.refresh_epoch[agent]:
+            return
+        if agent == "deepseek" and self.auth_busy:
+            return
+        if agent == "deepseek" and value.get("_auth", self.auth.currentData()) != self.auth.currentData():
+            return
+        if value.get("error"):
+            if agent == "deepseek":
+                self.auth_status.setText("状态未知：" + value["error"])
+            self.capabilities.pop(agent, None)
+            self.model_choices[agent].setEnabled(False)
+            self.effort_choices[agent].setEnabled(False)
+            self.message.setText(value["error"])
+            return
+        model = self.model_choices[agent]
+        key = "model" if agent == "codex" else "deepseek_model"
+        selected = model.currentData() if agent in self.loaded_agents else self.config.get(key) or None
+        self.capabilities[agent] = value
+        self.loaded_agents.add(agent)
+        model.blockSignals(True)
+        model.clear()
+        model.addItem("服务默认", None)
+        for item in value.get("models", []):
+            model.addItem(item.get("name", item["id"]), item["id"])
+        index = model.findData(selected)
+        if index < 0:
+            label = f"不可用：{selected}（请重新选择）" if value.get("models") else f"尚未确认：{selected}"
+            model.addItem(label, selected)
+            index = model.count() - 1
+        model.setCurrentIndex(index)
+        model.setEnabled(bool(value.get("models")))
+        model.blockSignals(False)
+        self.update_efforts(agent)
+        if not value.get("models"):
+            self.effort_choices[agent].setEnabled(False)
+        if agent == "deepseek":
+            connected = bool(value.get("connected"))
+            self.auth_status.setText("凭据已保存，尚未验证有效性" if connected else "未登录或未设置凭据")
+            self.login_button.setText("退出登录" if connected and self.auth.currentData() == "account" else "登录 DeepSeek 账号")
+            self.key_button.setText("清除 API Key" if connected and self.auth.currentData() == "api_key" else "设置 API Key")
+
+    def update_efforts(self, agent):
+        model = self.model_choices[agent].currentData()
+        items = self.capabilities.get(agent, {}).get("models", [])
+        chosen = next((item for item in items if item["id"] == model), None)
+        if chosen is None and model is None:
+            chosen = next((item for item in items if item.get("default")), items[0] if items else None)
+        choices = (chosen or {}).get("efforts", [])
+        effort = self.effort_choices[agent]
+        old = effort.currentData() if agent in self.effort_initialized else self.config.get("codex_effort" if agent == "codex" else "deepseek_effort")
+        effort.blockSignals(True)
+        effort.clear()
+        effort.addItem("服务默认" if choices else "该模型不支持选择推理强度", None)
+        for item in choices:
+            effort.addItem(item.get("name", item["id"]), item["id"])
+        index = effort.findData(old)
+        if old and index < 0:
+            effort.addItem(f"不可用：{old}（请重新选择）", old)
+            index = effort.count() - 1
+        effort.setCurrentIndex(max(0, index))
+        effort.setEnabled(bool(choices) or bool(old))
+        effort.blockSignals(False)
+        if items:
+            self.effort_initialized.add(agent)
+
+    def auth_action(self):
+        if self.auth_busy:
+            self.auth_cancel.set()
+        elif self.capabilities.get("deepseek", {}).get("connected"):
+            self.start_auth("logout")
+        else:
+            self.start_auth("login")
+
+    def verify_connection(self):
+        if self.config.get("demo") or self.auth_busy:
+            return
+        if QMessageBox.question(self, "验证连接", "验证会发送一条简短模型请求，可能产生少量费用。继续吗？") != QMessageBox.Yes:
+            return
+        self.start_auth("verify")
+
     def start_auth(self, action, **values):
         if self.config.get("demo") or self.auth_busy:
             return
-        expected = "account" if action == "login" else "api_key"
+        expected = "account" if action in ("login", "logout") else "api_key" if action in ("save_key", "clear_key") else self.auth.currentData()
         if self.config.get("deepseek_auth", "account") != expected:
             self.message.setText("请先选择并保存对应的 DeepSeek 认证方式。")
             return
         from .providers import DeepSeekAdapter
         self.auth_busy = True
+        self.refresh_epoch["deepseek"] += 1
         self.auth_cancel.clear()
-        self.login_button.setEnabled(False)
+        self.auth.setEnabled(False)
+        self.save_button.setEnabled(False)
+        self.verify_button.setEnabled(False)
+        self.login_button.setEnabled(action == "login")
+        self.login_button.setText("取消登录" if action == "login" else "处理中…")
         self.key_button.setEnabled(False)
-        self.cancel_login_button.setEnabled(action == "login")
-        self.message.setText("正在连接 DeepSeek Harness…")
+        self.auth_status.setText("正在登录…" if action == "login" else "正在处理…")
         adapter = DeepSeekAdapter(dict(self.config))
         def work():
             try:
-                adapter.authenticate(action, notify=self.auth_url.emit, cancelled=self.auth_cancel, **values)
-                message = "DeepSeek 认证已完成。"
+                if action == "verify":
+                    adapter.verify(self.auth_cancel)
+                    message = "验证成功：服务已接受请求。"
+                else:
+                    adapter.authenticate(action, notify=self.auth_url.emit, cancelled=self.auth_cancel, **values)
+                    message = "凭据已保存，尚未验证有效性。" if action in ("login", "save_key") else "凭据已移除。"
             except Exception as error:
-                message = str(error) if isinstance(error, DiaryError) else "DeepSeek 认证失败，请检查配置。"
+                message = "操作失败：" + (str(error) if isinstance(error, DiaryError) else "请检查配置并重试。")
             try:
                 self.auth_finished.emit(message)
             except RuntimeError:
@@ -175,11 +394,18 @@ class Preferences(QWidget):
         threading.Thread(target=work, daemon=True).start()
 
     def finish_auth(self, message):
+        self.refresh_epoch["deepseek"] += 1
         self.auth_busy = False
+        self.auth.setEnabled(True)
+        self.save_button.setEnabled(True)
+        self.verify_button.setEnabled(not self.config.get("demo"))
         self.login_button.setEnabled(not self.config.get("demo"))
         self.key_button.setEnabled(not self.config.get("demo"))
-        self.cancel_login_button.setEnabled(False)
+        self.login_button.setText("退出登录" if self.capabilities.get("deepseek", {}).get("connected") else "登录 DeepSeek 账号")
+        self.auth_status.setText(message)
         self.message.setText(message)
+        if not message.startswith(("验证成功", "操作失败")):
+            self.refresh_capabilities("deepseek")
 
     def open_auth_url(self, value):
         url = QUrl(value)
@@ -205,7 +431,41 @@ class Preferences(QWidget):
         self.refresh_style()
 
     def save(self):
+        if self.auth_busy:
+            self.message.setText("认证进行中，请等待完成或取消后再保存。")
+            return
         runtime = {k: w.text().strip() for k, w in self.fields.items()}
+        for agent, model_key, effort_key in (("codex", "model", "codex_effort"), ("deepseek", "deepseek_model", "deepseek_effort")):
+            if agent in self.capabilities:
+                value = self.model_choices[agent].currentData()
+                items = self.capabilities[agent].get("models", [])
+                if not items:
+                    runtime[model_key] = self.config.get(model_key, "")
+                    runtime[effort_key] = self.config.get(effort_key, "")
+                    continue
+                if value and not any(item["id"] == value for item in items):
+                    if agent != self.provider.currentData():
+                        runtime[model_key] = self.config.get(model_key, "")
+                        runtime[effort_key] = self.config.get(effort_key, "")
+                        continue
+                    self.message.setText("已选模型不可用，请重新选择。")
+                    return
+                chosen = next((item for item in items if item["id"] == value), None)
+                if chosen is None and not value:
+                    chosen = next((item for item in items if item.get("default")), items[0] if items else None)
+                effort = self.effort_choices[agent].currentData()
+                if effort and effort not in [item["id"] for item in (chosen or {}).get("efforts", [])]:
+                    if agent != self.provider.currentData():
+                        runtime[model_key] = self.config.get(model_key, "")
+                        runtime[effort_key] = self.config.get(effort_key, "")
+                        continue
+                    self.message.setText("已选推理强度不可用，请重新选择。")
+                    return
+                runtime[model_key] = value or ""
+                runtime[effort_key] = self.effort_choices[agent].currentData() or ""
+            else:
+                runtime[model_key] = (self.model_choices[agent].currentData() or "") if agent in self.loaded_agents else self.config.get(model_key, "")
+                runtime[effort_key] = (self.effort_choices[agent].currentData() or "") if agent in self.loaded_agents else self.config.get(effort_key, "")
         runtime["read_codex"] = self.read_sessions.isChecked()
         runtime["provider"] = self.provider.currentData()
         runtime["deepseek_auth"] = self.auth.currentData()
@@ -229,6 +489,7 @@ class Preferences(QWidget):
             self.config.update(runtime)
             self.message.setText("运行设置已保存，下次任务使用最新配置。")
             self.runtime_saved.emit()
+            self.refresh_capabilities("deepseek")
         except OSError as error:
             self.message.setText(str(error))
 

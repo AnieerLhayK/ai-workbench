@@ -20,6 +20,13 @@ includes them. Codex history remains a separate optional source. DeepSeek uses
 the e-Chatter tool-free profile and accepts Harness 0.2.1-rc.2 or 0.2.2-rc.1; unknown
 versions or failed isolation preflight stop the task before evidence submission.
 
+Settings groups Agent, paths, writing and appearance. Codex and DeepSeek expose
+their available models and supported reasoning strengths; an unavailable saved
+selection must be changed before use. DeepSeek reports stored credentials
+separately from verified connectivity. The explicit connection test submits a
+short model request and may incur a small charge; failure remains visible.
+Account sign-out and API-key removal affect only the e-Diary credential store.
+
 ## Start
 
 Use the package's existing Python 3.13 / PySide6 6.9.2 environment:
@@ -131,6 +138,9 @@ diaries are qualified; specific outcomes and metrics require direct evidence.
 The body normally has 600–2,000 non-whitespace characters, may be shorter when
 materials are insufficient, and remains within 2,000 for merged periods too.
 Technical inventories, commands and test counts belong in evidence, not the body.
+Development, work and personal reviews address the reader naturally in the
+second person. Existing saved text is unchanged; regeneration uses the current
+writing instructions and retains the ordinary revision history.
 
 **生成对比版** creates a separate development/work summary for the same period,
 retains the original, and advances neither cycle nor directory coverage. Existing

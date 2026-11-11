@@ -48,6 +48,8 @@ def stylesheet(mode):
     #rail QPushButton:hover {{ background:{selected}; }}
     QPushButton {{ padding:8px 14px; border:1px solid {border}; border-radius:6px; background:{background}; }}
     QPushButton:hover {{ background:{selected}; }}
+    QPushButton#settingsSection {{ background:{rail}; text-align:left; font-size:18px; font-weight:600; padding:10px 14px; }}
+    QLabel#settingsHeading {{ font-size:24px; font-weight:600; padding:0 0 4px; }}
     QPushButton:disabled {{ color:{muted}; }}
     QPushButton::menu-indicator {{ image:none; width:0; }}
     QPushButton#primary, #rail QPushButton#primary {{ background:#397eaf; color:white; border:0; }}

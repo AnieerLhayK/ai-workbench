@@ -7,6 +7,8 @@ from pathlib import Path
 import queue
 import threading
 import time
+import tempfile
+import logging
 
 import yaml
 
@@ -52,7 +54,7 @@ def installation(entry=None):
 
 
 class DeepSeek:
-    def __init__(self, root, cli=None, auth="account", *, output_schema=None, writing_policy=None, persist_session=True):
+    def __init__(self, root, cli=None, auth="account", *, output_schema=None, writing_policy=None, persist_session=True, transient_root=None):
         self.root, self.cli, self.auth = Path(root), cli, auth
         self.output_schema = output_schema or SCHEMA
         self.writing_policy = writing_policy
@@ -60,14 +62,23 @@ class DeepSeek:
         self.control = None
         self.lock = threading.RLock()
         self.jobs = set()
+        self.transient_root = Path(transient_root) if transient_root else None
+        self.transient_directories = []
 
     def _open(self, role="chat", cancelled=None):
         if cancelled is not None and cancelled.is_set():
             raise ChatterError("生成已取消")
         exe = installation(self.cli)
         self.root.mkdir(parents=True, exist_ok=True)
-        directory = self.root / "runs" / uid()
-        directory.mkdir(parents=True)
+        if self.transient_root:
+            self.transient_root.mkdir(parents=True, exist_ok=True)
+            transient = tempfile.TemporaryDirectory(prefix="e-diary-dsh-", dir=self.transient_root)
+            with self.lock:
+                self.transient_directories.append(transient)
+            directory = Path(transient.name)
+        else:
+            directory = self.root / "runs" / uid()
+            directory.mkdir(parents=True)
         modules = exe.parent / "resources/app.asar/dsh/node_modules"
         # A fresh profile/home for every process prevents inherited patches and plugins.
         home = directory / "home"
@@ -201,4 +212,16 @@ class DeepSeek:
             values = [*self.jobs, *([self.control] if self.control else [])]
             self.control = None
         for rpc in values:
-            rpc.close()
+            try:
+                rpc.close()
+            except Exception:
+                if self.transient_root is None:
+                    raise
+                logging.getLogger(__name__).warning("DeepSeek 运行进程关闭失败")
+        with self.lock:
+            directories, self.transient_directories = self.transient_directories, []
+        for directory in directories:
+            try:
+                directory.cleanup()
+            except OSError:
+                logging.getLogger(__name__).warning("DeepSeek 暂存运行目录清理失败")

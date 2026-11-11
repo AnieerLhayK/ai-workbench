@@ -20,6 +20,182 @@ from ai_workbench.e_diary.reports import Reports, chart_for
 from ai_workbench.e_diary.jobs import GenerationJobs
 
 
+def test_deepseek_generation_uses_selected_supported_model_and_effort(tmp_path):
+    from ai_workbench.e_diary.providers import DeepSeekAdapter
+    class Harness:
+        def __init__(self, **kwargs): pass
+        def account(self, **kwargs):
+            return {"connected": True, "models": [{"id": "m1", "efforts": [{"id": "high"}]}]}
+        def generate(self, request, *args): return request["execution"]
+        def close(self): pass
+    config = {"data_root": str(tmp_path), "deepseek_model": "m1", "deepseek_effort": "high"}
+    adapter = DeepSeekAdapter(config, Harness)
+    assert adapter.generate("x", tmp_path, threading.Event(), lambda _: None) == {"model": "m1", "effort": "high"}
+    config["deepseek_model"] = "missing"
+    with pytest.raises(DiaryError, match="模型"):
+        adapter.generate("x", tmp_path, threading.Event(), lambda _: None)
+    config.update(deepseek_model="m1", deepseek_effort="unsupported")
+    with pytest.raises(DiaryError, match="推理强度"):
+        adapter.generate("x", tmp_path, threading.Event(), lambda _: None)
+
+
+def test_preferences_group_agents_and_model_efforts(qt_app):
+    from ai_workbench.e_diary.pages import Preferences
+    page = Preferences(Settings(), {"demo": True}, lambda _: None)
+    assert [page.category_list.item(i).text() for i in range(page.category_list.count())] == ["Agent", "路径", "写作", "外观"]
+    page.set_capabilities("deepseek", {"connected": True, "models": [
+        {"id": "m", "name": "模型", "efforts": [{"id": "high", "name": "高"}]}]})
+    page.model_choices["deepseek"].setCurrentIndex(page.model_choices["deepseek"].findData("m"))
+    assert page.model_choices["deepseek"].currentData() == "m"
+    assert page.effort_choices["deepseek"].findData("high") >= 0
+    page.set_capabilities("deepseek", {"connected": True, "models": [
+        {"id": "m", "name": "模型", "efforts": [{"id": "high", "name": "高"}]}]})
+    assert page.model_choices["deepseek"].currentData() == "m"
+    assert "凭据已保存" in page.auth_status.text()
+    page.category_list.setCurrentRow(1)
+    assert page.categories.currentIndex() == 1
+    page.category_list.setCurrentRow(0)
+    from PySide6.QtWidgets import QPushButton
+    header = next(button for button in page.findChildren(QPushButton) if "DeepSeek Harness" in button.text())
+    assert header.isChecked()
+    header.click()
+    assert not header.isChecked()
+    page.close()
+
+
+def test_model_refresh_keeps_explicit_default_effort_and_ignores_old_status(qt_app):
+    from ai_workbench.e_diary.pages import Preferences
+    page = Preferences(Settings(), {"demo": True, "deepseek_model": "m", "deepseek_effort": "high"}, lambda _: None)
+    value = {"connected": True, "models": [{"id": "m", "efforts": [{"id": "high"}]}]}
+    page.set_capabilities("deepseek", value)
+    page.effort_choices["deepseek"].setCurrentIndex(0)
+    page.set_capabilities("deepseek", value)
+    assert page.effort_choices["deepseek"].currentData() is None
+    page.refresh_epoch["deepseek"] += 1
+    page.set_capabilities("deepseek", {"_epoch": 0, "connected": False, "models": []})
+    assert "凭据已保存" in page.auth_status.text()
+    page.close()
+
+
+def test_saved_effort_survives_initial_unconnected_status(qt_app):
+    from ai_workbench.e_diary.pages import Preferences
+    page = Preferences(Settings(), {"demo": True, "deepseek_model": "m", "deepseek_effort": "high"}, lambda _: None)
+    page.set_capabilities("deepseek", {"connected": False, "models": []})
+    page.set_capabilities("deepseek", {"connected": True, "models": [{"id": "m", "efforts": [{"id": "high"}]}]})
+    assert page.effort_choices["deepseek"].currentData() == "high"
+    page.close()
+
+
+def test_deepseek_verification_requires_successful_model_response(tmp_path):
+    from ai_workbench.e_diary.providers import DeepSeekAdapter
+    class Harness:
+        def __init__(self, **kwargs): pass
+        def account(self, **kwargs):
+            return {"connected": True, "models": [{"id": "m", "efforts": []}]}
+        def generate(self, request, *args): return {"title": "验证", "body": "连接成功", "files": []}
+        def close(self): pass
+    adapter = DeepSeekAdapter({"data_root": str(tmp_path)}, Harness)
+    assert adapter.verify(threading.Event()) is True
+    class FailedHarness(Harness):
+        def generate(self, request, *args):
+            from ai_workbench.e_chatter.files import ChatterError
+            raise ChatterError("认证失败")
+    with pytest.raises(DiaryError, match="认证失败"):
+        DeepSeekAdapter({"data_root": str(tmp_path)}, FailedHarness).verify(threading.Event())
+
+
+def test_unavailable_saved_model_is_preserved_until_reselected(qt_app, tmp_path):
+    from ai_workbench.e_diary.pages import Preferences
+    config = {"demo": True, "codex_cli": str(tmp_path / "codex.exe"), "staging_root": str(tmp_path), "deepseek_model": "old"}
+    settings = Settings()
+    page = Preferences(settings, config, lambda _: None)
+    page.provider.setCurrentIndex(page.provider.findData("deepseek"))
+    page.set_capabilities("deepseek", {"connected": True, "models": [{"id": "new", "name": "New", "efforts": []}]})
+    assert page.model_choices["deepseek"].currentData() == "old"
+    page.save()
+    assert "不可用" in page.message.text()
+    assert config["deepseek_model"] == "old"
+    page.model_choices["deepseek"].setCurrentIndex(page.model_choices["deepseek"].findData("new"))
+    page.save()
+    assert config["deepseek_model"] == "new"
+    page.close()
+
+
+def test_unconnected_provider_does_not_block_saving_auth_method(qt_app, tmp_path):
+    from ai_workbench.e_diary.pages import Preferences
+    config = {"demo": True, "codex_cli": str(tmp_path / "codex.exe"), "staging_root": str(tmp_path), "deepseek_model": "old"}
+    page = Preferences(Settings(), config, lambda _: None)
+    page.set_capabilities("deepseek", {"connected": False, "models": []})
+    page.auth.setCurrentIndex(page.auth.findData("api_key"))
+    page.save()
+    assert config["deepseek_auth"] == "api_key"
+    assert config["deepseek_model"] == "old"
+    page.close()
+
+
+def test_preferences_login_cancellation_and_failure_are_visible(qt_app, tmp_path, monkeypatch):
+    from ai_workbench.e_diary.pages import Preferences
+    started = threading.Event()
+    class Adapter:
+        def __init__(self, config): pass
+        def authenticate(self, action, *, cancelled, **kwargs):
+            started.set()
+            cancelled.wait(2)
+            raise DiaryError("登录已取消")
+    monkeypatch.setattr("ai_workbench.e_diary.providers.DeepSeekAdapter", Adapter)
+    page = Preferences(Settings(), {"data_root": str(tmp_path), "deepseek_auth": "account"}, lambda _: None)
+    page.start_auth("login")
+    assert started.wait(1)
+    assert page.login_button.text() == "取消登录"
+    assert not page.auth.isEnabled() and not page.save_button.isEnabled()
+    page.auth_action()
+    until(qt_app, lambda: not page.auth_busy)
+    assert "登录已取消" in page.auth_status.text()
+    page.close()
+
+
+def test_capability_discovery_uses_and_cleans_staging(qt_app, tmp_path, monkeypatch, caplog):
+    from ai_workbench.e_diary.providers import capabilities
+    from ai_workbench.e_chatter import deepseek
+    class Process:
+        def poll(self): return None
+    class Rpc:
+        def __init__(self, command, directory, **kwargs):
+            self.process = Process()
+            assert Path(directory).is_relative_to(tmp_path / "staging")
+        def request(self, method, *args, **kwargs):
+            if method == "e-chatter/preflight":
+                return {"tools": [], "guard": True, "runtime": "e-chatter-dsh-1"}
+            return {"models": [], "connected": False, "has_key": False}
+        def close(self): pass
+    monkeypatch.setattr(deepseek, "installation", lambda _: tmp_path / "DeepSeek Harness.exe")
+    monkeypatch.setattr(deepseek, "qualified_minimal_rows", lambda _: [])
+    monkeypatch.setattr(deepseek, "Rpc", Rpc)
+    result = capabilities({"data_root": str(tmp_path / "data"), "staging_root": str(tmp_path / "staging")}, "deepseek")
+    assert not result["connected"]
+    assert list((tmp_path / "staging").iterdir()) == []
+    assert not (tmp_path / "data/providers/deepseek/runs").exists()
+    class FailedRpc(Rpc):
+        def request(self, method, *args, **kwargs):
+            raise RuntimeError("preflight failed")
+    monkeypatch.setattr(deepseek, "Rpc", FailedRpc)
+    with pytest.raises(RuntimeError, match="preflight failed"):
+        capabilities({"data_root": str(tmp_path / "data"), "staging_root": str(tmp_path / "staging")}, "deepseek")
+    assert list((tmp_path / "staging").iterdir()) == []
+    class CloseFailure(Rpc):
+        def close(self): raise OSError("controlled close failure")
+    monkeypatch.setattr(deepseek, "Rpc", CloseFailure)
+    assert not capabilities({"data_root": str(tmp_path / "data"), "staging_root": str(tmp_path / "staging")}, "deepseek")["connected"]
+    assert list((tmp_path / "staging").iterdir()) == []
+    assert "进程关闭失败" in caplog.text
+    monkeypatch.setattr(deepseek, "Rpc", Rpc)
+    def fail_cleanup(_self):
+        raise PermissionError("controlled cleanup failure")
+    monkeypatch.setattr(deepseek.tempfile.TemporaryDirectory, "cleanup", fail_cleanup)
+    assert not capabilities({"data_root": str(tmp_path / "data"), "staging_root": str(tmp_path / "staging")}, "deepseek")["connected"]
+    assert "清理失败" in caplog.text
+
+
 def test_npm_codex_launch_keeps_json_rpc_stream_unbuffered(tmp_path, monkeypatch):
     from ai_workbench.e_diary.codex import argv
     script = tmp_path / "node_modules/@openai/codex/bin/codex.js"
@@ -283,6 +459,7 @@ def test_generation_failure_cancel_and_comparison_do_not_consume_directory(tmp_p
         until(qt_app, lambda: not jobs.state["pending"])
         assert bool(settings.data["sources"][0]["covered"]) == (mode == "normal")
     assert "600–2000" in adapter.prompt and "historical_background" in adapter.prompt
+    assert "第二人称" in adapter.prompt and "你" in adapter.prompt
     assert len(library.query(kind="work")) == 2
     assert settings.data["cycles"]["work"]["last_end"] is None
 
@@ -482,6 +659,29 @@ def test_codex_drains_late_thread_event_before_returning(tmp_path, monkeypatch):
     monkeypatch.setattr("ai_workbench.e_diary.codex.popen", start)
     result = CodexAdapter({"codex_cli": "codex.exe"}).generate("prompt", tmp_path, threading.Event(), lambda _: None)
     assert result["thread_ids"] == ["late-thread"]
+
+
+def test_codex_generation_passes_selected_reasoning(tmp_path, monkeypatch):
+    from ai_workbench.e_diary.codex import CodexAdapter
+    captured = {}
+    def command(*args, **kwargs):
+        captured.update(kwargs)
+        raise DiaryError("stop before execution")
+    monkeypatch.setattr("ai_workbench.e_diary.codex.isolation.exec_command", command)
+    with pytest.raises(DiaryError, match="stop before execution"):
+        CodexAdapter({"codex_cli": "codex.exe", "model": "example", "codex_effort": "high"}).generate("x", tmp_path, threading.Event(), lambda _: None)
+    assert captured["model"] == "example" and captured["reasoning"] == "high"
+
+
+def test_codex_rejects_unavailable_model_before_submitting(tmp_path, monkeypatch):
+    from ai_workbench.e_diary.codex import CodexAdapter
+    def command(*args, **kwargs):
+        (tmp_path / "models.json").write_text(json.dumps({"models": [{"slug": "available", "supported_reasoning_levels": []}]}), encoding="utf-8")
+        return ["synthetic"]
+    monkeypatch.setattr("ai_workbench.e_diary.codex.isolation.exec_command", command)
+    monkeypatch.setattr("ai_workbench.e_diary.codex.popen", lambda *args: pytest.fail("must not submit"))
+    with pytest.raises(DiaryError, match="模型不可用"):
+        CodexAdapter({"codex_cli": "codex.exe", "model": "missing"}).generate("x", tmp_path, threading.Event(), lambda _: None)
 
 
 def test_regeneration_does_not_replace_title_edit_during_generation(qt_app, tmp_path):

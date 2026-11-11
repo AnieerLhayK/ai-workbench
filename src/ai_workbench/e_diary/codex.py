@@ -144,9 +144,21 @@ class CodexAdapter:
         try:
             command = isolation.exec_command(self.config["codex_cli"], argv, directory, schema, result_path,
                 policy="You are e-Diary's isolated writing task. Use only supplied evidence. Do not invoke tools or access files or external services. Return the required JSON.",
-                model=self.config.get("model"))
+                model=self.config.get("model"), reasoning=self.config.get("codex_effort") or None)
         except isolation.IsolationError as error:
             raise DiaryError(str(error)) from error
+        catalog_path = directory / "models.json"
+        if catalog_path.exists() and self.config.get("model"):
+            try:
+                models = json.loads(catalog_path.read_text(encoding="utf-8"))["models"]
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                raise DiaryError("无法读取 Codex 模型目录，请检查配置") from error
+            selected = next((item for item in models if item.get("slug") == self.config["model"]), None)
+            if selected is None:
+                raise DiaryError("已选 Codex 模型不可用，请在设置中重新选择")
+            effort = self.config.get("codex_effort")
+            if effort and effort not in [item.get("effort") for item in selected.get("supported_reasoning_levels", [])]:
+                raise DiaryError("已选 Codex 推理强度不可用，请在设置中重新选择")
         if cancelled.is_set():
             raise DiaryError("任务已取消；未提交材料")
         process = popen(command, directory)
