@@ -11,8 +11,9 @@ to Workspace for review and synchronization by its registered publisher.
 
 Read [the maintenance contract](shared/maintenance.md) before changes. Load
 [the maintenance skill](skills/ai-workbench-maintainer/SKILL.md) when developing,
-testing or preparing a projection. It has no general platform projection; the
-guarded DeepSeek Workspace entry may bind it as its acting skill.
+testing or preparing a projection. It has no general platform projection.
+DeepSeek Desktop and CLI may bind it as an acting skill through their separate
+Workspace registrations and shared runtime guard.
 
 For trial cards, bound CLI, assistant proposals, approvals and confirmed commands, read
 [experiment-box](docs/experiment-box.md) for its storage, launch and native
