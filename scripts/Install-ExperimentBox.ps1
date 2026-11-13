@@ -18,10 +18,11 @@ foreach ($directory in @($DataRoot,$DesktopRoot)) {
 }
 if (-not (Test-Path -LiteralPath $DesktopRoot -PathType Container)) { throw 'Desktop root does not exist.' }
 $packageRoot = Split-Path $PSScriptRoot -Parent
+. (Join-Path $PSScriptRoot 'Copy-ShortcutIcon.ps1')
 $configPath = Join-Path $DataRoot 'config.json'
 $shortcutPath = Join-Path $DesktopRoot '个人试验盒.lnk'
-$iconPath = Join-Path $packageRoot 'src/ai_workbench/assets/experiment-box.ico'
-if (-not (Test-Path -LiteralPath $iconPath -PathType Leaf)) { throw 'Build the owned experiment-box icon first.' }
+$iconSource = Join-Path $packageRoot 'src/ai_workbench/assets/experiment-box.ico'
+$iconPath = Join-Path $DataRoot 'experiment-box.ico'
 if ((Test-Path -LiteralPath $configPath) -or (Test-Path -LiteralPath $shortcutPath)) {
     if (-not $Upgrade) { throw 'Existing deployment: inspect configuration and shortcut; use -Upgrade for this owned app only.' }
     if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) { throw 'Cannot upgrade without owned configuration.' }
@@ -39,7 +40,7 @@ if ((Test-Path -LiteralPath $configPath) -or (Test-Path -LiteralPath $shortcutPa
     }
 } else { $existing = @{} }
 [void][IO.Directory]::CreateDirectory($DataRoot)
-foreach ($pathToCheck in @($DataRoot,$configPath,$shortcutPath,(Join-Path $DataRoot 'experiment-box-cli.py'),(Join-Path $DataRoot 'experiment-box-cli.cmd'))) {
+foreach ($pathToCheck in @($DataRoot,$configPath,$shortcutPath,$iconPath,(Join-Path $DataRoot 'experiment-box-cli.py'),(Join-Path $DataRoot 'experiment-box-cli.cmd'))) {
     if ((Test-Path -LiteralPath $pathToCheck) -and ((Get-Item -LiteralPath $pathToCheck -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Deployment target must not be a reparse point.' }
 }
 if (-not $Python) { $Python = Join-Path (Split-Path $Pythonw -Parent) 'python.exe' }
@@ -63,6 +64,8 @@ foreach ($ownedPath in @($bootstrap,$cli)) {
 }
 if (Test-Path -LiteralPath $configPath) { Copy-Item -LiteralPath $configPath -Destination ($configPath + '.backup-' + $stamp) }
 if (Test-Path -LiteralPath $shortcutPath) { Copy-Item -LiteralPath $shortcutPath -Destination (Join-Path $DataRoot ('shortcut.backup-' + $stamp + '.lnk')) }
+if (Test-Path -LiteralPath $iconPath) { Copy-Item -LiteralPath $iconPath -Destination ($iconPath + '.backup-' + $stamp) }
+$iconPath = Copy-ShortcutIcon -Source $iconSource -Destination $iconPath
 $existing | ConvertTo-Json | Set-Content -LiteralPath $configPath -Encoding utf8
 $sourceJson = ConvertTo-Json -InputObject $source -Compress
 $configJson = ConvertTo-Json -InputObject $configPath -Compress

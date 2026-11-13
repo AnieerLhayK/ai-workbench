@@ -158,3 +158,15 @@ def test_check_launch_keeps_windows_native_path_spelling(tmp_path, monkeypatch):
         promotion.run_checks(tmp_path, "synthetic-python", tmp_path, tmp_path)
     assert "Path" in observed[0] and "PATH" not in observed[0]
     assert "PYTHONPATH" not in observed[0]
+
+
+def test_distribution_contract_ships_owned_e_chatter_icon_inputs():
+    contract = json.loads(
+        (Path(__file__).parents[1] / "distribution/e-chatter/contract.json").read_text(encoding="utf-8")
+    )
+    for name in (
+        "src/ai_workbench/assets/e-chatter.svg",
+        "src/ai_workbench/assets/e-chatter.ico",
+        "scripts/make_icon.py",
+    ):
+        assert contract["files"].get(name) == name, name

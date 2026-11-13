@@ -17,13 +17,14 @@ foreach ($runtimePath in @($Pythonw,$Npx,$Node,$HermesPythonw,$HermesExe)) {
     if (-not (Test-Path -LiteralPath $runtimePath -PathType Leaf)) { throw "Missing runtime: $runtimePath" }
 }
 $packageRoot = Split-Path $PSScriptRoot -Parent
-$iconPath = Join-Path $packageRoot 'src/ai_workbench/assets/muti-ai.ico'
-if (-not (Test-Path -LiteralPath $iconPath)) { throw 'Owned icon must be generated before deployment.' }
+. (Join-Path $PSScriptRoot 'Copy-ShortcutIcon.ps1')
+$iconSource = Join-Path $packageRoot 'src/ai_workbench/assets/muti-ai.ico'
 $configPath = Join-Path $DataRoot 'config.json'
 if (Test-Path -LiteralPath $configPath) { throw 'Existing deployment: review config instead of overwriting it.' }
 $shortcutPath = Join-Path $DesktopRoot 'muti-ai.lnk'
 if (Test-Path -LiteralPath $shortcutPath) { throw 'Existing shortcut: review before replacement.' }
 [void][IO.Directory]::CreateDirectory($DataRoot)
+$iconPath = Copy-ShortcutIcon -Source $iconSource -Destination (Join-Path $DataRoot 'muti-ai.ico')
 $config = @{data_root=$DataRoot;pythonw=$Pythonw;npx=$Npx;node=$Node;hermes_home=$HermesHome;hermes_pythonw=$HermesPythonw;hermes_exe=$HermesExe}
 foreach ($entry in @{terminal=$Terminal;powershell=$PowerShell;codex_cli=$CodexCli;claude_cli=$ClaudeCli}.GetEnumerator()) {
     if ($entry.Value) {

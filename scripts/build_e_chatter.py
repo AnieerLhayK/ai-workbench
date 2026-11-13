@@ -35,9 +35,13 @@ def main():
     staging.mkdir(parents=True, exist_ok=True)
     output.mkdir(parents=True, exist_ok=True)
     environment = os.environ | {"PYINSTALLER_CONFIG_DIR": str(staging / "cache")}
+    icon = package / "src/ai_workbench/assets/e-chatter.ico"
+    if not icon.is_file():
+        parser.error("build the owned e-Chatter icon with scripts/make_icon.py first")
     subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--windowed", "--onedir",
                     "--name", "e-Chatter", "--distpath", str(output), "--workpath", str(staging / "work"),
                     "--specpath", str(staging), "--paths", str(package / "src"),
+                    "--icon", str(icon),
                     "--add-data", f"{web};ai_workbench/e_chatter/web",
                     "--add-data", f"{web.parent / 'resources'};ai_workbench/e_chatter/resources",
                     "--exclude-module", "numpy", "--exclude-module", "pandas", "--exclude-module", "matplotlib",

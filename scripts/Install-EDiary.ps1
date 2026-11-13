@@ -25,15 +25,18 @@ $shortcutPath = Join-Path $DesktopRoot 'e-Diary.lnk'
 if ((Test-Path -LiteralPath $configPath) -or (Test-Path -LiteralPath $shortcutPath)) { throw 'Existing deployment; inspect before changing it.' }
 [void][IO.Directory]::CreateDirectory($DataRoot)
 [void][IO.Directory]::CreateDirectory($StagingRoot)
+$packageRoot = Split-Path $PSScriptRoot -Parent
+. (Join-Path $PSScriptRoot 'Copy-ShortcutIcon.ps1')
+$iconSource = Join-Path $packageRoot 'src/ai_workbench/assets/e-diary.ico'
+$iconPath = Copy-ShortcutIcon -Source $iconSource -Destination (Join-Path $DataRoot 'e-diary.ico')
 @{data_root=$DataRoot;codex_cli=$CodexCli;prose_path=$ProsePath;zf_root=$UserStyleSource;personal_archive_root=$PersonalArchiveRoot;staging_root=$StagingRoot;source_roots=$SourceRoots;read_codex=$true} |
     ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $configPath -Encoding utf8
-$packageRoot = Split-Path $PSScriptRoot -Parent
 $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut($shortcutPath)
 $shortcut.TargetPath = $Pythonw
 $shortcut.Arguments = '-B "' + (Join-Path $PSScriptRoot 'launch_e_diary.py') + '" --config "' + $configPath + '"'
 $shortcut.WorkingDirectory = $DataRoot
-$shortcut.IconLocation = (Join-Path $packageRoot 'src/ai_workbench/assets/e-diary.ico') + ',0'
+$shortcut.IconLocation = $iconPath + ',0'
 $shortcut.Description = 'e-Diary - 日记、开发、工作与个人回顾'
 $shortcut.Save()
 Write-Output "Created $shortcutPath"

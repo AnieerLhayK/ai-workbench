@@ -113,9 +113,13 @@ Its in-memory provider is not evidence of actual Codex readiness.
 
 Install PyInstaller 6.22.3 into a dedicated build environment and run
 `python scripts/build_e_chatter.py --staging <external-build-dir> --output <external-release-dir>`.
-The builder bundles QtWebEngine, the built frontend and application-adapted
-engineering resources. It does not bundle Codex, DeepSeek Harness or any imported character.
-Retain all Qt and other third-party license files with the portable directory.
+Generate the owned executable icon with `python -B scripts/make_icon.py --name e-chatter`;
+the builder embeds `src/ai_workbench/assets/e-chatter.ico`. For a desktop shortcut,
+copy that `.ico` beside the e-Chatter data root and point the shortcut's icon at the
+copy; Explorer does not load shortcut icons that resolve inside the source workspace.
+The builder bundles QtWebEngine, the built frontend and application-adapted engineering
+resources. It does not bundle Codex, DeepSeek Harness or any imported character. Retain
+all Qt and other third-party license files with the portable directory.
 
 Run `python -B -m pytest -q -p no:cacheprovider --basetemp <external-test-dir>`.
 Verify frontend interactions in a browser, then the real Qt WebChannel and frozen

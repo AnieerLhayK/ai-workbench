@@ -142,3 +142,15 @@ def test_authoritative_inventory_cannot_be_replaced(tmp_path):
     contract_path.write_text(json.dumps(contract), encoding="utf-8")
     with pytest.raises(ValueError, match="authoritative contract"):
         projection.check(destination, expected_files=files)
+
+
+def test_contract_ships_owned_e_chatter_icon_inputs():
+    contract = json.loads((ROOT / "projection-contract.json").read_text(encoding="utf-8"))
+    for name in (
+        "src/ai_workbench/assets/e-chatter.svg",
+        "src/ai_workbench/assets/e-chatter.ico",
+        "scripts/make_icon.py",
+        "scripts/Copy-ShortcutIcon.ps1",
+        "tests/test_icon_assets.py",
+    ):
+        assert name in contract["files"], name
