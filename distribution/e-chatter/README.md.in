@@ -9,8 +9,10 @@ resource provenance, acceptance limits and the one Windows artifact identity.
 
 Extract the complete Windows ZIP and open e-Chatter.exe. Python and Node are not
 needed. Install your chosen Agent separately and connect in Settings. Use your
-own Codex account, or DeepSeek Harness 0.2.1-rc.2 with official account/API Key.
-Other Harness versions are refused until their isolation has been qualified.
+own Codex account, or DeepSeek Harness 0.2.1-rc.2 or 0.2.2-rc.1 whose official
+bundled command runtime matches the reviewed minimal SDK roster contract, with
+official account/API Key. A runtime with another roster or package names is
+refused until its isolation has been qualified.
 Codex must support the restricted app-server configuration documented in
 [the application guide](docs/e-chatter.md). Missing Agents do not prevent opening
 the GUI; Settings explains connection failures.

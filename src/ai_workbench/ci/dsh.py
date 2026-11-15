@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import queue
+import re
 import subprocess
 import sys
 import threading
@@ -12,6 +13,15 @@ import yaml
 from ..e_chatter.deepseek import installation
 from ..e_chatter.harness_archive import read_file
 from .service import CIError
+
+
+def preparation_detail(stderr, stdout):
+    """Return a bounded, path-redacted diagnostic for the preparation script."""
+    text = " ".join("\n".join(part for part in (stderr, stdout) if part).split())
+    text = re.sub(r"(?i)\b[a-z]:[\\/][^\s\"'<>]+", "<path>", text)
+    text = re.sub(r"(?i)\\\\[^\s\"'<>]+", "<path>", text)
+    text = re.sub(r"(?<![\w<])/(?:[^/\s\"'<>]+/)+[^/\s\"'<>]*", "<path>", text)
+    return text[-400:]
 
 
 class Connection:
@@ -104,7 +114,8 @@ def execute(workspace, runtime, env, settings, prompt=None, verify=None):
         for index, directory in enumerate((workspace, temp)):
             result = subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(Path(__file__).with_name("prepare-windows.ps1")), "-Root", str(directory), "-Backup", str(runtime / f"acl-{index}.sddl")], env=preparation_env, capture_output=True, timeout=30)
             if result.returncode:
-                raise CIError("无法为当前用户拥有的隔离目录准备 DSH 权限；未扩大其他目录权限")
+                detail = preparation_detail(result.stderr, result.stdout)
+                raise CIError("无法为当前用户拥有的隔离目录准备 DSH 权限；未扩大其他目录权限" + (f"（{detail}）" if detail else ""))
     original = Path(os.environ.get("DSH_HOME", Path.home() / ".dsh"))
     selected = None
     profile = original / "profiles/desktop/cordis.patch.yml"

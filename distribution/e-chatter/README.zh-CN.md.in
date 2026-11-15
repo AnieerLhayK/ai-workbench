@@ -7,8 +7,9 @@
 ## 下载使用
 
 解压完整 ZIP，打开 e-Chatter.exe，无需安装 Python 或 Node。自行安装所选 Agent，
-在设置中连接自己的 Codex 账号，或 DeepSeek Harness 0.2.1-rc.2 的官方账号／API Key。
-未验证的 Harness 版本会停止连接。Codex 需要支持受限 app-server 配置，详见
+在设置中连接自己的 Codex 账号，或 DeepSeek Harness 0.2.1-rc.2 / 0.2.2-rc.1
+（其官方内置命令运行时需匹配已验收的 minimal SDK roster 契约）的官方账号／API Key。
+roster 或包名不匹配的 Harness 运行时会被拒绝。Codex 需要支持受限 app-server 配置，详见
 [应用说明](docs/e-chatter.md)。缺少 Agent 不影响打开界面。
 
 首次启动没有角色，可导入自己的 SKILL.md 角色目录。默认资料库为

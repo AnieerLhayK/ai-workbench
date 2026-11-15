@@ -36,3 +36,31 @@ def test_verification_preparation_ignores_inherited_incompatible_powershell_modu
     result = NativeAgent().verify(workspace, ["python", "-m", "unittest"], {"agent": "dsh", "repository": "owner/repo", "skill_path": str(skill), "test_command": ["python", "-m", "unittest"]})
     assert result.returncode == 0
     assert os.environ["PSModulePath"] == inherited
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows preparation contract")
+def test_preparation_failure_includes_bounded_script_diagnostics(monkeypatch, tmp_path):
+    from ai_workbench.ci import dsh
+    workspace = tmp_path / "private-clone"
+    workspace.mkdir()
+    runtime = tmp_path / "native-test"
+    (runtime / "temp").mkdir(parents=True)
+    monkeypatch.setattr(dsh, "installation", lambda value: tmp_path / "controlled.exe")
+    monkeypatch.setattr(dsh, "read_file", lambda *args: '{"version":"0.2.1-rc.2"}')
+
+    def failing(command, **kwargs):
+        private = tmp_path / "private"
+        return dsh.subprocess.CompletedProcess(
+            command, 1, "",
+            f"Private directory owner mismatch (owner S-1-5-32-544) at {private} and \\\\server\\share\\x and /home/runner/private",
+        )
+
+    monkeypatch.setattr(dsh.subprocess, "run", failing)
+    with pytest.raises(dsh.CIError) as error:
+        dsh.execute(workspace, runtime, {}, {}, verify=["python", "-m", "unittest"])
+    message = str(error.value)
+    assert "S-1-5-32-544" in message
+    assert "<path>" in message and str(tmp_path / "private") not in message
+    assert "\\\\server\\share" not in message and "/home/runner" not in message
+    assert "  " not in message
+    assert len(message) < 600

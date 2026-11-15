@@ -17,8 +17,10 @@ login and API Key through an e-Diary-owned private credential store; the key is
 never stored in the settings document. The selected provider receives the same
 task evidence, including confirmed personal archive excerpts when the task
 includes them. Codex history remains a separate optional source. DeepSeek uses
-the e-Chatter tool-free profile and accepts Harness 0.2.1-rc.2 or 0.2.2-rc.1; unknown
-versions or failed isolation preflight stop the task before evidence submission.
+the e-Chatter tool-free profile and accepts the reviewed minimal SDK roster contract
+(Harness 0.2.2-rc.1 verified against the full enabled package-name roster; the
+0.2.1-rc.2 roster id contract is retained); a roster or package-name mismatch, or
+failed isolation preflight, stops the task before evidence submission.
 
 Settings groups Agent, paths, writing and appearance. Codex and DeepSeek expose
 their available models and supported reasoning strengths; an unavailable saved

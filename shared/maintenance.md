@@ -17,9 +17,10 @@ GitHubChecks and NativeRepair provide the variable Seams. UI closure stops only
 observation. Test actual patches and independent native verification; discovery,
 process exit and an agent's self-report do not establish success. Keep credentials
 and default model selection in each native harness. Scope Windows preparation to
-new caller-owned clone/temp roots, snapshot their DACLs, and localize PowerShell
-module-path overrides to that child. Never patch the provider installation or
-change global sandbox mode to make an acceptance test pass.
+new caller-owned (user or token-owner on elevated runners) clone/temp roots,
+snapshot their DACLs, and localize PowerShell module-path overrides to that child.
+Never patch the provider installation or change global sandbox mode to make an
+acceptance test pass.
 
 The lifecycle module owns state transitions and async completion. Its adapters
 complete on the controller's thread; a future worker adapter must marshal its
@@ -185,10 +186,12 @@ cancellation in their Adapters. Settings selects the global Agent; model/effort
 preferences belong to a conversation and Agent, while engineering tasks snapshot
 execution configuration. No Adapter may widen the application's file authority.
 DeepSeek's fresh runtime composition and tool guard must pass before admitting
-materials; a protocol/version mismatch is a blocker, never an automatic fallback.
-Account/Key changes are control-plane actions, never model tools. Keep secrets and
-local disclosure confirmations out of migrations. Qualify both real authentication
-modes separately from demo/fixture tests and retain unsupported-version evidence.
+materials; the reviewed minimal SDK roster contract is the compatibility boundary,
+and any roster id or package-name mismatch is a blocker, never an automatic
+fallback. Account/Key changes are control-plane actions, never model tools. Keep
+secrets and local disclosure confirmations out of migrations. Qualify both real
+authentication modes separately from demo/fixture tests and retain rejected-roster
+evidence.
 
 e-Chatter's character-system copy is a managed immutable snapshot, not a second
 development tree. Follow docs/e-chatter-promotion.md: export committed blobs,

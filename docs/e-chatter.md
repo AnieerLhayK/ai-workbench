@@ -38,11 +38,14 @@ the model/effort for that diagnosis only. Replies and diagnostics record executi
 old messages do not acquire invented model metadata.
 
 Codex uses official app-server account/model interfaces and preserves its shared
-isolation checks. DeepSeek currently qualifies the official Windows Desktop
-`0.2.1-rc.2` or `0.2.2-rc.1` bundled command runtime. Choose `DeepSeek Harness.exe` or its installed
-`resources/runtime/cli/bin/dsh.cmd`; retired pilot wrappers are rejected. Other
-runtime versions stop before material submission until qualified. Nothing installs
-or changes independent Harness Desktop plugins or data.
+isolation checks. DeepSeek qualifies the official Windows Desktop bundled command
+runtime by its reviewed minimal SDK roster contract; Harness `0.2.2-rc.1` has been
+verified against the full enabled package-name roster, and the `0.2.1-rc.2` roster
+id contract is retained from the prior qualified release. Choose
+`DeepSeek Harness.exe` or its installed `resources/runtime/cli/bin/dsh.cmd`;
+retired pilot wrappers are rejected. A runtime whose roster or package names differ
+stops before material submission. Nothing installs or changes independent Harness
+Desktop plugins or data.
 
 DeepSeek has its own home under this application's `providers/deepseek` directory.
 Official browser sign-in and API Key are separate selectable modes, with no
@@ -56,7 +59,7 @@ waiting, exchange and completion. Cancelling prevents late success.
 The application-owned Harness bridge exposes only authentication, model metadata,
 isolation inspection and the SDK prompt lifecycle. Its HTTP listener binds
 loopback for the official callback only; the control plane is private stdio.
-Every process uses a fresh profile with a version-qualified template roster,
+Every process uses a fresh profile with a roster-qualified template,
 no shell/file/MCP/host-skill/subagent tools, and a monotonic tool-execution denial.
 Preflight checks the effective empty tool roster before materials are admitted.
 Each generation has a dedicated process so cancellation cannot interrupt another

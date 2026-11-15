@@ -55,6 +55,7 @@ Native completion has a ten-minute deadline; independent tests have five minutes
 On Windows, owned timeout process trees are stopped. Failures have safe categories,
 not raw provider/account output. Patches and test output remain in private job
 directories. No provider reasoning transcript is part of the application receipt.
+Preparation failures add a bounded, path-redacted script diagnostic.
 
 ## Native execution
 
@@ -63,12 +64,16 @@ home, native file/shell tools and only the selected CI skill. This is a separate
 tool-capable Adapter; e-Chatter's generation-only profile is not used. Its current
 validated version is `0.2.1-rc.2`. Existing provider/model selection is read from
 the native Desktop profile, and an explicit model replaces only that selection.
-Unsupported runtime versions stop with a compatibility error.
+Unsupported runtime versions stop with a compatibility error. This tool-capable
+Adapter keeps its own version qualification; the generation-only e-Chatter/e-Diary
+provider qualifies the reviewed minimal SDK roster contract instead.
 
 The Windows DSH sandbox needs the current caller to have `WRITE_OWNER` when it
 applies its Low integrity label. Preparation adds only `TakeOwnership` for the
-current owner on newly created private clone/temp directories, preserving an
-original DACL snapshot. It checks ownership and rejects reparse roots. It does
+caller on newly created private clone/temp directories, preserving an original
+DACL snapshot. It accepts a directory owned by the caller's user SID or the
+caller's token owner (elevated GitHub runners create Administrators-owned
+directories); other owners are rejected, as are reparse roots. It does
 not change the source repository, tool installation or global ACL template.
 The Windows PowerShell preparation child receives its own system module path;
 the parent/global environment is unchanged. Native ACL setup also creates its
