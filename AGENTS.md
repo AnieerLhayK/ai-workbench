@@ -20,7 +20,7 @@ For trial cards, bound CLI, assistant proposals, approvals and confirmed command
 acceptance contracts; it is a separate entry from muti-ai.
 
 For e-Diary read [its contract](docs/e-diary.md). It is a separate Qt entry with
-external text revisions, bounded evidence collection and cancellable generation jobs.
+single-current diaries, summary revisions, bounded evidence collection and cancellable generation jobs.
 Its task-submitting Adapter must not change the existing terminal launchers'
 handoff-only contract. Demo must not read real sessions, roots or live styles.
 

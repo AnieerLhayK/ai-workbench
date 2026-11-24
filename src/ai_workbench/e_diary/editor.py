@@ -1,6 +1,7 @@
 """Diary editor and period reader. Persistence is crossed only through DiaryLibrary."""
 from copy import deepcopy
 from datetime import date
+from uuid import uuid4
 
 from PySide6.QtCore import QDate, Qt, QTimer, Signal
 from PySide6.QtGui import QTextBlockFormat, QTextCursor
@@ -8,7 +9,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QDa
     QPushButton, QLabel, QTextEdit, QTextBrowser, QStackedWidget, QComboBox, QDialog,
     QListWidget, QDialogButtonBox, QMessageBox, QScrollArea, QMenu)
 
-from .library import Conflict, DiaryError, period_label
+from .library import Conflict, DiaryError, digest, period_label
 from .reports import paint_chart
 from .style import is_dark
 
@@ -52,7 +53,7 @@ class Editor(QWidget):
         self.comparison.clicked.connect(lambda: self.compare.emit(self.record))
         overflow = QPushButton("…")
         menu = QMenu(overflow)
-        menu.addAction("查看历史版本", self.history)
+        self.history_action = menu.addAction("查看历史版本", self.history)
         self.remove = menu.addAction("删除这篇记录", self.delete)
         overflow.setMenu(menu)
         header.addWidget(self.date)
@@ -138,6 +139,8 @@ class Editor(QWidget):
         self.timer.stop()
         self.loading = True
         self.record = None
+        self.draft_id, self.draft_hash = None, None
+        self.copy_draft_id, self.copy_draft_hash = None, None
         self.dirty = self.conflicted = False
         for widget in (self.title, self.tags, self.body):
             widget.clear()
@@ -177,6 +180,8 @@ class Editor(QWidget):
         self.timer.stop()
         self.loading = True
         self.record = deepcopy(record)
+        self.draft_id, self.draft_hash = None, None
+        self.copy_draft_id, self.copy_draft_hash = None, None
         self.setEnabled(True)
         self.preview_button.show()
         self.title.setText(record["title"])
@@ -191,6 +196,7 @@ class Editor(QWidget):
         cursor.mergeBlockFormat(block)
         self.period.setText(period_label(record.get("period")))
         summary = record["kind"] != "diary"
+        self.history_action.setVisible(summary)
         self.generated_label.setVisible(summary)
         self.date.setVisible(not summary)
         self.period.setVisible(summary)
@@ -227,7 +233,12 @@ class Editor(QWidget):
         if not self.record or not self.dirty:
             return not self.conflicted
         try:
-            record = self.library.save(self.fields(), self.record.get("id"), self.record.get("hash"))
+            fields = self.fields()
+            if not self.record.get("id") and self.draft_id is None:
+                self.draft_id, self.draft_hash = uuid4().hex, digest(fields["body"])
+            record = self.library.save(fields, self.record.get("id"),
+                                       self.record.get("hash") or self.draft_hash,
+                                       draft_id=self.draft_id)
         except Conflict as error:
             self.conflicted = True
             self.message.setText(str(error))
@@ -235,6 +246,11 @@ class Editor(QWidget):
             self.keep_button.show()
             return False
         except (OSError, DiaryError) as error:
+            if self.draft_id and not self.record.get("id"):
+                try:
+                    self.draft_hash = self.library.pending_draft_hash(self.draft_id) or self.draft_hash
+                except (OSError, DiaryError, UnicodeError):
+                    pass
             self.status.setText("保存失败，编辑仍保留")
             self.message.setText(str(error))
             return False
@@ -268,10 +284,18 @@ class Editor(QWidget):
         try:
             fields = self.fields()
             fields.update(kind="diary", title=fields["title"] + "（冲突副本）")
-            saved = self.library.save(fields)
+            if self.copy_draft_id is None:
+                self.copy_draft_id, self.copy_draft_hash = uuid4().hex, digest(fields["body"])
+            saved = self.library.save(fields, expected_hash=self.copy_draft_hash,
+                                      draft_id=self.copy_draft_id)
             self.load(saved)
             self.saved.emit(saved["id"])
         except (OSError, DiaryError) as error:
+            if self.copy_draft_id:
+                try:
+                    self.copy_draft_hash = self.library.pending_draft_hash(self.copy_draft_id) or self.copy_draft_hash
+                except (OSError, DiaryError, UnicodeError):
+                    pass
             self.message.setText(str(error))
 
     def update_preview(self):

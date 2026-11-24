@@ -91,8 +91,9 @@ the generic history/approved-experiment transport. Attachment limits must bound
 expanded bytes as well as compressed files, before parsing or registering data.
 
 For e-Diary follow [its storage and generation contract](../docs/e-diary.md).
-Treat the entry descriptor as the text revision commit point. The previous
-revision must remain readable when saving fails. Keep generation work off the
+Treat the entry descriptor as the text commit point. The previous text must
+remain readable when saving fails. Diaries retain only current text after a
+successful commit; generated summaries retain their revision history. Keep generation work off the
 GUI thread and marshal completion through signals; a cancelled or duplicate
 completion must not publish or advance cycle coverage. Rebuild search state from
 private files; do not make an index the only owner of diary content. Generated

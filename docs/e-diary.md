@@ -59,16 +59,15 @@ selector filters months. Text autosaves after a short pause. Summaries have a
 period history list and built-in reader/editor, with source excerpts and optional
 record-count charts. No external editor is necessary to read a generated review.
 
-Each stable entry directory holds `record.json` and UTF-8 `.md` / `.txt` revisions.
-The descriptor points to the committed current text. A failed descriptor write
-leaves the previous version readable. The in-memory search index rebuilds from
-descriptors and text on opening/querying; there is no authoritative database.
-Editing a current text file externally reloads on activation. Concurrent changes
-stop autosave and offer external reload or a separate diary copy. Historical
-versions restore as a new revision. Each revision snapshots its own tags, period,
-evidence, chart and style metadata; restoration does not attach a later
-generation's sources to an earlier body. Deletion is a reversible descriptor
-flag; permanent deletion requires an explicit confirmation in the recycle bin.
+Diary directories use their diary date, with numbered suffixes for entries on
+the same date. Changing the date renames the directory; the internal ID stays
+stable. A diary retains only its current UTF-8 text and has no history control.
+Summary records retain revision history and revision-owned metadata. The in-memory
+search index rebuilds from descriptors and text. Editing a current text file
+externally reloads on activation; concurrent changes stop autosave and offer
+external reload or a separate diary copy. Deletion is a reversible descriptor
+flag; permanent deletion requires confirmation in the recycle bin. Existing
+summaries are not regenerated when a diary changes.
 
 ## Sources and generation
 

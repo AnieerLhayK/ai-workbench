@@ -218,8 +218,10 @@ def test_library_dates_search_versions_external_conflict_and_trash(tmp_path):
     assert len(library.query(text="散步")) == 2
     updated = library.save(fields(date="2026-09-01", body="后来补记"), first["id"], first["hash"])
     assert updated["id"] == first["id"]
-    assert library.version(first["id"], 0)["body"] == first["body"]
-    path = tmp_path / "entries" / first["id"] / updated["file"]
+    assert updated["versions"] == []
+    path = tmp_path / "entries" / "2026-09-01" / updated["file"]
+    assert len(list(path.parent.glob("*.md"))) == 1
+    assert (tmp_path / "entries" / "2026-10-14-2").exists()
     path.write_text("外部修改", encoding="utf-8")
     with pytest.raises(Conflict):
         library.save(fields(body="软件里的编辑"), first["id"], updated["hash"])
@@ -237,6 +239,105 @@ def test_library_dates_search_versions_external_conflict_and_trash(tmp_path):
     assert not reopened.query(deleted=True)
 
 
+
+def test_diary_migration_preserves_current_and_ignores_summaries(tmp_path):
+    import json
+    entries = tmp_path / "entries"
+    diary_id = "a" * 32
+    directory = entries / diary_id
+    directory.mkdir(parents=True)
+    (directory / "current.md").write_text("current", encoding="utf-8")
+    (directory / "older.md").write_text("old", encoding="utf-8")
+    (directory / "record.json").write_text(json.dumps({"id": diary_id, "kind": "diary", "date": "2026-10-14", "title": "day", "tags": [], "file": "current.md", "format": ".md", "updated_at": "2026", "versions": [{"file": "older.md"}, {"file": "current.md"}]}), encoding="utf-8")
+    library = DiaryLibrary(tmp_path)
+    summary = library.save(fields(kind="personal"))
+    current = library.read(diary_id)
+    library.save(fields(body="edited"), diary_id, current["hash"])
+    assert library.migrate_diary(diary_id) == 2
+    assert library.migrate_diary(diary_id) == 0
+    assert library.read(diary_id)["body"] == "edited"
+    assert not (entries / "2026-10-14" / "older.md").exists()
+    assert library.read(summary["id"])["versions"]
+    assert DiaryLibrary(tmp_path).read(diary_id)["body"] == "edited"
+
+
+
+@pytest.mark.parametrize("body", ["a\r\nb", "\ufeffa\n b", "\ufeff\ufeffa"])
+def test_saved_diary_body_and_hash_match_reopen(tmp_path, body):
+    library = DiaryLibrary(tmp_path)
+    record = library.save(fields(body=body))
+    reopened = DiaryLibrary(tmp_path).read(record["id"])
+    assert record["body"] == reopened["body"]
+    assert record["hash"] == reopened["hash"]
+    assert library.save(fields(body="next"), record["id"], record["hash"])["body"] == "next"
+
+
+@pytest.mark.parametrize("raw", ["20261124", "2026-W48-2"])
+def test_diary_dates_are_normalized_before_storage(tmp_path, raw):
+    library = DiaryLibrary(tmp_path)
+    record = library.save(fields(date=raw))
+    assert record["date"] == "2026-11-24"
+    assert (tmp_path / "entries" / "2026-11-24").exists()
+    assert DiaryLibrary(tmp_path).read(record["id"])["date"] == "2026-11-24"
+
+
+
+@pytest.mark.parametrize("raw", ["20261124", "2026-W48-2"])
+def test_legacy_noncanonical_diary_directory_remains_readable(tmp_path, raw):
+    import json
+    library = DiaryLibrary(tmp_path)
+    record = library.save(fields(date="2026-11-24"))
+    old_directory = tmp_path / "entries" / "2026-11-24"
+    descriptor = old_directory / "record.json"
+    data = json.loads(descriptor.read_text(encoding="utf-8"))
+    data["date"] = raw
+    descriptor.write_text(json.dumps(data), encoding="utf-8")
+    old_directory.rename(tmp_path / "entries" / raw)
+    reopened = DiaryLibrary(tmp_path)
+    current = reopened.read(record["id"])
+    assert current["date"] == "2026-11-24"
+    reopened.save(fields(date="2026-11-24"), record["id"], current["hash"])
+    assert (tmp_path / "entries" / "2026-11-24").exists()
+
+
+def test_legacy_pending_raw_digest_can_recover(tmp_path, monkeypatch):
+    import hashlib
+    import json
+    import ai_workbench.e_diary.library as module
+    library = DiaryLibrary(tmp_path)
+    real_write = module.atomic_text
+    def fail(path, text):
+        real_write(path, text)
+        raise OSError("interrupted")
+    monkeypatch.setattr(module, "atomic_text", fail)
+    with pytest.raises(OSError):
+        library.save(fields(body="draft"))
+    monkeypatch.setattr(module, "atomic_text", real_write)
+    directory = tmp_path / "entries" / "2026-10-14"
+    pending = directory / ".save-pending.json"
+    journal = json.loads(pending.read_text(encoding="utf-8"))
+    raw = b"\xef\xbb\xbfdraft\r\ntext"
+    (directory / journal["new_file"]).write_bytes(raw)
+    journal["new_hash"] = hashlib.sha256(raw).hexdigest()
+    pending.write_text(json.dumps(journal), encoding="utf-8")
+    assert DiaryLibrary(tmp_path).query()[0]["body"] == "draft\ntext"
+
+
+@pytest.mark.parametrize("body", ["a\r\nb", "\ufeffdraft"])
+def test_interrupted_new_diary_recovers_normalized_text(tmp_path, monkeypatch, body):
+    import ai_workbench.e_diary.library as module
+    library = DiaryLibrary(tmp_path)
+    real_write = module.atomic_text
+    def fail(path, text):
+        real_write(path, text)
+        raise OSError("interrupted")
+    monkeypatch.setattr(module, "atomic_text", fail)
+    with pytest.raises(OSError):
+        library.save(fields(body=body))
+    monkeypatch.setattr(module, "atomic_text", real_write)
+    assert len(DiaryLibrary(tmp_path).query()) == 1
+
+
 def test_failed_descriptor_commit_keeps_previous_text(tmp_path, monkeypatch):
     import ai_workbench.e_diary.library as module
     library = DiaryLibrary(tmp_path)
@@ -251,10 +352,195 @@ def test_failed_descriptor_commit_keeps_previous_text(tmp_path, monkeypatch):
 def test_malformed_data_is_not_overwritten(tmp_path):
     library = DiaryLibrary(tmp_path)
     record = library.save(fields())
-    path = tmp_path / "entries" / record["id"] / "record.json"
+    path = tmp_path / "entries" / "2026-10-14" / "record.json"
     path.write_text("broken", encoding="utf-8")
     with pytest.raises(DiaryError): DiaryLibrary(tmp_path)
     assert path.read_text() == "broken"
+
+
+
+
+
+
+
+
+def test_pending_new_diary_retry_keeps_stable_id(tmp_path, monkeypatch):
+    import ai_workbench.e_diary.library as module
+    library = DiaryLibrary(tmp_path)
+    actual = module.atomic_json
+    remaining = 2
+    def fail_twice(path, value):
+        nonlocal remaining
+        if path.name == "record.json" and remaining:
+            remaining -= 1
+            raise OSError("temporary failure")
+        return actual(path, value)
+    monkeypatch.setattr(module, "atomic_json", fail_twice)
+    draft_id = "a" * 32
+    with pytest.raises(OSError):
+        library.save(fields(body="first"), draft_id=draft_id)
+    saved = library.save(fields(body="latest"), expected_hash=module.digest("first"), draft_id=draft_id)
+    assert saved["id"] == draft_id and saved["body"] == "latest"
+    assert len(DiaryLibrary(tmp_path).query()) == 1
+
+
+
+def test_pending_draft_hash_uses_same_snapshot_for_hash_and_validation(tmp_path, monkeypatch):
+    import ai_workbench.e_diary.library as module
+    library = DiaryLibrary(tmp_path)
+    real_write = module.atomic_text
+    def interrupt(path, text):
+        real_write(path, text)
+        raise OSError("interrupted")
+    monkeypatch.setattr(module, "atomic_text", interrupt)
+    draft_id = "b" * 32
+    with pytest.raises(OSError):
+        library.save(fields(body="verified"), draft_id=draft_id)
+    monkeypatch.setattr(module, "atomic_text", real_write)
+    original_read = Path.read_text
+    def changed_between_reads(path, *args, **kwargs):
+        if path.suffix == ".md":
+            return "unverified"
+        return original_read(path, *args, **kwargs)
+    monkeypatch.setattr(Path, "read_text", changed_between_reads)
+    assert library.pending_draft_hash(draft_id) == module.digest("verified")
+
+
+def test_new_diary_descriptor_retry_returns_committed_record(tmp_path, monkeypatch):
+    import ai_workbench.e_diary.library as module
+    library = DiaryLibrary(tmp_path)
+    actual = module.atomic_json
+    failed = False
+    def fail_once(path, value):
+        nonlocal failed
+        if path.name == "record.json" and not failed:
+            failed = True
+            raise OSError("temporary failure")
+        return actual(path, value)
+    monkeypatch.setattr(module, "atomic_json", fail_once)
+    saved = library.save(fields())
+    assert saved["id"] and len(library.query()) == 1
+    updated = library.save(fields(body="edited"), saved["id"], saved["hash"])
+    assert updated["body"] == "edited" and len(library.query()) == 1
+
+
+def test_interrupted_new_diary_is_recovered_on_restart(tmp_path, monkeypatch):
+    import ai_workbench.e_diary.library as module
+    library = DiaryLibrary(tmp_path)
+    real_write = module.atomic_text
+    def fail(path, body):
+        real_write(path, body)
+        raise OSError("interrupted")
+    monkeypatch.setattr(module, "atomic_text", fail)
+    with pytest.raises(OSError):
+        library.save(fields())
+    monkeypatch.setattr(module, "atomic_text", real_write)
+    recovered = DiaryLibrary(tmp_path).query()
+    assert len(recovered) == 1 and recovered[0]["body"] == fields()["body"]
+    assert not (tmp_path / "entries" / "2026-10-14" / ".save-pending.json").exists()
+
+
+@pytest.mark.parametrize("write_body", [False, True])
+def test_diary_uncommitted_save_recovers_original(tmp_path, monkeypatch, write_body):
+    import ai_workbench.e_diary.library as module
+    library = DiaryLibrary(tmp_path)
+    original = library.save(fields())
+    real_write = module.atomic_text
+    def fail(path, body):
+        if write_body:
+            real_write(path, body)
+        raise OSError("injected interruption")
+    monkeypatch.setattr(module, "atomic_text", fail)
+    with pytest.raises(OSError):
+        library.save(fields(date="2026-10-16", body="new"), original["id"], original["hash"])
+    monkeypatch.setattr(module, "atomic_text", real_write)
+    reopened = DiaryLibrary(tmp_path)
+    assert reopened.read(original["id"])["body"] == original["body"]
+    directory = tmp_path / "entries" / "2026-10-14"
+    assert len(list(directory.glob("*.md"))) == 1
+    assert not (directory / ".save-pending.json").exists()
+
+
+@pytest.mark.parametrize("failure", ["old_unlink", "rename", "journal_unlink"])
+def test_diary_committed_save_recovers_cleanup_failure(tmp_path, monkeypatch, failure):
+    library = DiaryLibrary(tmp_path)
+    original = library.save(fields())
+    previous = original["file"]
+    old_unlink, old_rename = Path.unlink, Path.rename
+    tripped = False
+    def unlink(path, *args, **kwargs):
+        nonlocal tripped
+        if not tripped and ((failure == "old_unlink" and path.name == previous) or
+                            (failure == "journal_unlink" and path.name == ".save-pending.json")):
+            tripped = True
+            raise OSError("injected cleanup failure")
+        return old_unlink(path, *args, **kwargs)
+    def rename(path, target):
+        nonlocal tripped
+        if not tripped and failure == "rename":
+            tripped = True
+            raise OSError("injected rename failure")
+        return old_rename(path, target)
+    monkeypatch.setattr(Path, "unlink", unlink)
+    monkeypatch.setattr(Path, "rename", rename)
+    saved = library.save(fields(date="2026-10-16", body="new"), original["id"], original["hash"])
+    assert tripped and saved["body"] == "new"
+    assert library.read(original["id"])["body"] == "new"
+    monkeypatch.setattr(Path, "unlink", old_unlink)
+    monkeypatch.setattr(Path, "rename", old_rename)
+    reopened = DiaryLibrary(tmp_path)
+    assert reopened.read(original["id"])["body"] == "new"
+    directory = tmp_path / "entries" / "2026-10-16"
+    assert len(list(directory.glob("*.md"))) == 1
+    assert not (directory / ".save-pending.json").exists()
+    assert DiaryLibrary(tmp_path).read(original["id"])["body"] == "new"
+
+
+
+
+def test_recovery_preserves_external_edit_of_committed_body(tmp_path, monkeypatch):
+    library = DiaryLibrary(tmp_path)
+    original = library.save(fields())
+    real_unlink = Path.unlink
+    def fail(path, *args, **kwargs):
+        if path.name == original["file"]:
+            raise OSError("cleanup blocked")
+        return real_unlink(path, *args, **kwargs)
+    monkeypatch.setattr(Path, "unlink", fail)
+    saved = library.save(fields(body="new"), original["id"], original["hash"])
+    path = tmp_path / "entries" / "2026-10-14" / saved["file"]
+    path.write_text("external", encoding="utf-8")
+    monkeypatch.setattr(Path, "unlink", real_unlink)
+    assert DiaryLibrary(tmp_path).read(original["id"])["body"] == "external"
+
+
+def test_refresh_error_after_recovering_other_record_keeps_it_readable(tmp_path, monkeypatch):
+    library = DiaryLibrary(tmp_path)
+    first = library.save(fields())
+    second = library.save(fields(date="2026-10-15"))
+    real_rename = Path.rename
+    def fail_rename(path, target):
+        raise OSError("interrupted rename")
+    monkeypatch.setattr(Path, "rename", fail_rename)
+    saved = library.save(fields(date="2026-10-16", body="new"), first["id"], first["hash"])
+    monkeypatch.setattr(Path, "rename", real_rename)
+    (tmp_path / "entries" / "2026-10-15" / "record.json").write_text("broken", encoding="utf-8")
+    with pytest.raises(DiaryError):
+        library.refresh()
+    assert library.read(first["id"])["body"] == saved["body"]
+    assert library.read(second["id"])["body"] == second["body"]
+
+
+def test_failed_refresh_preserves_existing_directory_mapping(tmp_path):
+    library = DiaryLibrary(tmp_path)
+    first = library.save(fields())
+    second = library.save(fields(date="2026-10-15"))
+    broken = tmp_path / "entries" / "2026-10-15" / "record.json"
+    broken.write_text("broken", encoding="utf-8")
+    with pytest.raises(DiaryError):
+        library.refresh()
+    assert library.read(first["id"])["body"] == first["body"]
+    assert library.read(second["id"])["body"] == second["body"]
 
 
 def test_live_style_reloads_and_missing_resources_fail(tmp_path):
@@ -1022,6 +1308,76 @@ def test_job_failure_cancellation_and_duplicate_completion(qt_app, tmp_path):
     window.jobs.cancel()
     wait_job(qt_app, window.jobs)
     assert "取消" in window.jobs.state["error"]
+    window.close()
+
+
+
+
+
+def test_conflict_copy_retries_without_duplicate(qt_app, tmp_path, monkeypatch):
+    import ai_workbench.e_diary.library as module
+    window = create_window({"data_root": str(tmp_path), "read_codex": False})
+    window.new_entry()
+    window.editor.body.setPlainText("original")
+    assert window.editor.save()
+    window.editor.body.setPlainText("copy")
+    actual = module.atomic_json
+    remaining = 2
+    def fail_twice(path, value):
+        nonlocal remaining
+        if path.name == "record.json" and remaining:
+            remaining -= 1
+            raise OSError("temporary failure")
+        return actual(path, value)
+    monkeypatch.setattr(module, "atomic_json", fail_twice)
+    window.editor.keep_draft()
+    window.editor.keep_draft()
+    assert sorted(item["body"] for item in window.library.query(kind="diary")) == ["copy", "original"]
+    window.close()
+
+
+def test_editor_retry_tracks_latest_persisted_draft(qt_app, tmp_path, monkeypatch):
+    import ai_workbench.e_diary.library as module
+    window = create_window({"data_root": str(tmp_path), "read_codex": False})
+    window.new_entry()
+    actual = module.atomic_json
+    stage = {"journal": 1, "record": 2}
+    def fail(path, value):
+        key = "journal" if path.name == ".save-pending.json" else "record" if path.name == "record.json" else "other"
+        if stage.get(key, 0):
+            stage[key] -= 1
+            raise OSError("temporary failure")
+        return actual(path, value)
+    monkeypatch.setattr(module, "atomic_json", fail)
+    window.editor.body.setPlainText("first")
+    assert not window.editor.save()
+    window.editor.body.setPlainText("second")
+    assert not window.editor.save()
+    window.editor.body.setPlainText("third")
+    assert window.editor.save()
+    assert [item["body"] for item in window.library.query(kind="diary")] == ["third"]
+    window.close()
+
+
+def test_editor_retries_pending_new_diary_without_duplicate(qt_app, tmp_path, monkeypatch):
+    import ai_workbench.e_diary.library as module
+    window = create_window({"data_root": str(tmp_path), "read_codex": False})
+    window.new_entry()
+    window.editor.body.setPlainText("first")
+    actual = module.atomic_json
+    remaining = 2
+    def fail_twice(path, value):
+        nonlocal remaining
+        if path.name == "record.json" and remaining:
+            remaining -= 1
+            raise OSError("temporary failure")
+        return actual(path, value)
+    monkeypatch.setattr(module, "atomic_json", fail_twice)
+    assert not window.editor.save()
+    window.editor.body.setPlainText("latest")
+    assert window.editor.save()
+    assert len(window.library.query(kind="diary")) == 1
+    assert window.editor.record["body"] == "latest"
     window.close()
 
 
