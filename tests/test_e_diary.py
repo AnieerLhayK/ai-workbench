@@ -170,6 +170,7 @@ def test_capability_discovery_uses_and_cleans_staging(qt_app, tmp_path, monkeypa
         def close(self): pass
     monkeypatch.setattr(deepseek, "installation", lambda _: tmp_path / "DeepSeek Harness.exe")
     monkeypatch.setattr(deepseek, "qualified_minimal_rows", lambda _: [])
+    monkeypatch.setattr(deepseek, "qualified_account_package", lambda _: "@deepseek-ai/dsh-deepseek-account")
     monkeypatch.setattr(deepseek, "Rpc", Rpc)
     result = capabilities({"data_root": str(tmp_path / "data"), "staging_root": str(tmp_path / "staging")}, "deepseek")
     assert not result["connected"]

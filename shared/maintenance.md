@@ -194,6 +194,11 @@ secrets and local disclosure confirmations out of migrations. Qualify both real
 authentication modes separately from demo/fixture tests and retain rejected-roster
 evidence.
 
+The account adapter is outside the minimal SDK roster: verify its exact official
+package metadata as well as the roster. The 0.2.2-rc.5 rename otherwise leaves
+the preflight waiting for a plugin that cannot load. Check real startup and
+authorization reuse across a restart without reading credential contents.
+
 e-Chatter's character-system copy is a managed immutable snapshot, not a second
 development tree. Follow docs/e-chatter-promotion.md: export committed blobs,
 test independently, stage before activation and retain one artifact/hash for

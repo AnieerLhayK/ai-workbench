@@ -98,6 +98,21 @@ def installation(entry=None):
     return plain_path(path)
 
 
+def qualified_account_package(executable):
+    """Select an explicitly supported account adapter from official metadata."""
+    from .harness_archive import read_file
+    archive = Path(executable).parent / "resources/app.asar"
+    for short_name in ("dsh-deepseek-account-platform", "dsh-deepseek-account"):
+        name = f"@deepseek-ai/{short_name}"
+        try:
+            metadata = json.loads(read_file(archive, f"dsh/node_modules/{name}/package.json"))
+        except (ChatterError, ValueError):
+            continue
+        if metadata.get("name") == name:
+            return name
+    raise ChatterError("Harness 账号组件与已验收契约不一致")
+
+
 class DeepSeek:
     def __init__(self, root, cli=None, auth="account", *, output_schema=None, writing_policy=None, persist_session=True, transient_root=None):
         self.root, self.cli, self.auth = Path(root), cli, auth
@@ -114,6 +129,7 @@ class DeepSeek:
         if cancelled is not None and cancelled.is_set():
             raise ChatterError("生成已取消")
         exe = installation(self.cli)
+        account_package = qualified_account_package(exe)
         self.root.mkdir(parents=True, exist_ok=True)
         if self.transient_root:
             self.transient_root.mkdir(parents=True, exist_ok=True)
@@ -145,7 +161,7 @@ class DeepSeek:
                   {"insert": [
                       {"id": "credentials", "name": "@deepseek-ai/dsh-credentials-local", "config": {"path": str(self.root / "credentials.yaml"), "dshHome": str(home), "watch": True}},
                       {"id": "authorization", "name": "@deepseek-ai/dsh-authorization"},
-                      {"id": "deepseek-account", "name": "@deepseek-ai/dsh-deepseek-account-platform"},
+                      {"id": "deepseek-account", "name": account_package},
                       {"id": "webserver", "name": "@deepseek-ai/dsh-host-webserver", "config": {"host": "127.0.0.1", "port": 0}},
                       {"id": "account-llm", "name": "@deepseek-ai/dsh-llm-deepseek-account"},
                       {"id": "e-chatter-bridge", "name": str(bridge), "inject": ["loader"]},

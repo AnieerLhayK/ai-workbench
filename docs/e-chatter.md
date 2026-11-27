@@ -41,7 +41,9 @@ Codex uses official app-server account/model interfaces and preserves its shared
 isolation checks. DeepSeek qualifies the official Windows Desktop bundled command
 runtime by its reviewed minimal SDK roster contract; Harness `0.2.2-rc.1` has been
 verified against the full enabled package-name roster, and the `0.2.1-rc.2` roster
-id contract is retained from the prior qualified release. Choose
+id contract is retained from the prior qualified release. Account adapter discovery
+also recognizes the renamed official account package in `0.2.2-rc.5`; that runtime's
+preflight and account-login initiation have been checked. Choose
 `DeepSeek Harness.exe` or its installed `resources/runtime/cli/bin/dsh.cmd`;
 retired pilot wrappers are rejected. A runtime whose roster or package names differ
 stops before material submission. Nothing installs or changes independent Harness

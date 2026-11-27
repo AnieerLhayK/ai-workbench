@@ -170,6 +170,47 @@ def test_archive_named_metadata_read_is_bounded(tmp_path):
         read_file(bad, "package.json")
 
 
+@pytest.mark.parametrize("package", ["dsh-deepseek-account-platform", "dsh-deepseek-account"])
+def test_account_adapter_selects_installed_reviewed_package(monkeypatch, tmp_path, package):
+    def read_file(_archive, name):
+        if name == f"dsh/node_modules/@deepseek-ai/{package}/package.json":
+            return json.dumps({"name": f"@deepseek-ai/{package}"})
+        raise ChatterError("missing")
+
+    monkeypatch.setattr("ai_workbench.e_chatter.harness_archive.read_file", read_file)
+    assert deepseek.qualified_account_package(tmp_path / "DeepSeek Harness.exe") == f"@deepseek-ai/{package}"
+
+
+def test_account_adapter_rejects_unknown_package(monkeypatch, tmp_path):
+    def missing(*_args):
+        raise ChatterError("missing")
+    monkeypatch.setattr("ai_workbench.e_chatter.harness_archive.read_file", missing)
+    with pytest.raises(ChatterError, match="账号"):
+        deepseek.qualified_account_package(tmp_path / "DeepSeek Harness.exe")
+
+
+def test_control_profile_uses_installed_account_adapter(monkeypatch, tmp_path):
+    from pathlib import Path
+    exe = tmp_path / "DeepSeek Harness.exe"
+    package = "@deepseek-ai/dsh-deepseek-account"
+    monkeypatch.setattr(deepseek, "installation", lambda _cli: exe)
+    monkeypatch.setattr(deepseek, "qualified_minimal_rows", lambda _exe: reviewed_rows(native=True))
+    def read_file(_archive, name):
+        if name.endswith("/dsh-deepseek-account/package.json"):
+            return json.dumps({"name": package})
+        raise ChatterError("missing")
+    monkeypatch.setattr("ai_workbench.e_chatter.harness_archive.read_file", read_file)
+    class FakeRpc:
+        def __init__(self, command, *_args, **_kwargs):
+            overlay = Path(command[command.index("--patch") + 1])
+            rows = yaml.safe_load(overlay.read_text(encoding="utf-8"))[-1]["insert"]
+            assert next(row for row in rows if row["id"] == "deepseek-account")["name"] == package
+        def request(self, *_args, **_kwargs):
+            return {"tools": [], "guard": True, "runtime": "e-chatter-dsh-1"}
+    monkeypatch.setattr(deepseek, "Rpc", FakeRpc)
+    assert isinstance(deepseek.DeepSeek(tmp_path / "data")._open(), FakeRpc)
+
+
 def test_delayed_login_url_is_opened_once_without_leaking_into_ui(qt_app):
     from ai_workbench.e_chatter.app import Bridge
 
